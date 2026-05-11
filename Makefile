@@ -28,3 +28,15 @@ format:
 clean:
 	rm -rf models/* reports/*
 	@echo "Cleaned models/ and reports/ contents"
+
+etl:
+	python src/data/etl.py
+	@echo "ETL pipeline completed"
+
+compose-up:
+	docker compose up -d
+	@echo "Docker compose up completed"
+
+compose-down:
+	docker compose down
+	@echo "Docker compose down completed"
