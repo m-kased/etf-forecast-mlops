@@ -4,6 +4,37 @@ x-aws-env: &aws-env
   AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
   AWS_DEFAULT_REGION: us-east-1
 
+x-airflow-common: &airflow-common
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+  AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+  AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  # Airflow 3.0: LocalExecutor task subprocesses call the execution API (task logs + callbacks).
+  # This stack uses `airflow ... standalone` (one container): use localhost, not airflow-webserver.
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://localhost:8080/execution/"
+  # Shared JWT signing keys — MUST be identical on scheduler and api-server.
+  # The scheduler signs task tokens with [api_auth] jwt_secret; the api-server validates them.
+  # If left unset each container generates its own random key → "Signature verification failed".
+  AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+  AIRFLOW__CORE__INTERNAL_API_SECRET_KEY: ${AIRFLOW_INTERNAL_API_SECRET_KEY}
+  # Airflow 3.0 Simple Auth Manager — define users (username:role) and password file
+  AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: ${AIRFLOW_SIMPLE_AUTH_MANAGER_USERS}
+  # ETL pipeline env vars (same values as K8s)
+  MINIO_ENDPOINT: http://minio:9000
+  # Optional: host in presigned GET URLs (browser). Empty → same as MINIO_ENDPOINT (in-cluster only).
+  MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
+  MINIO_PRESIGNED_EXPIRES: ${MINIO_PRESIGNED_EXPIRES:-86400}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: "" # Docker Compose Redis has no auth
+  PYTHONPATH: /opt/airflow/dags:/opt/airflow/dags/ml:/opt/airflow/src:/opt/airflow
+
 services:
   # PostgreSQL — metadata for MLflow & Airflow
   postgres:
@@ -16,8 +47,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       retries: 5
 
@@ -52,7 +84,7 @@ services:
 
   # MLflow — model registry & tracking
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.11.3
+    image: ghcr.io/mlflow/mlflow:v3.12.0-full
     ports:
       - "5000:5000"
     environment:
@@ -69,23 +101,54 @@ services:
       minio:
         condition: service_healthy
 
-  # Airflow — orchestration for ETL & model training
-  airflow:
-    image: apache/airflow:slim-2.8.1-python3.11
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ml_data
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-    ports:
-      - "8080:8080"
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    container_name: ml-airflow-init
     volumes:
-      - ./src:/opt/airflow/dags/src
+      - ./src:/opt/airflow/src
       - ./dags:/opt/airflow/dags
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      <<: *airflow-common
+    # Create required Airflow pools so pipelines run without manual setup
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow pools set binance_api_pool 5 'Rate limiter for Binance API calls' &&
+        airflow pools set postgres_pool 5 'Rate limiter for PostgreSQL load operations' &&
+        airflow pools set ml_training_pool 3 'ML training concurrency limit' &&
+        echo 'Init complete'
+      "
+    restart: "no"
+
+  # Airflow — orchestration for ETL & model training
+  airflow:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    environment:
+      <<: *airflow-common
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src:/opt/airflow/src
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
     command: standalone
 
 volumes:
   postgres_data:
   minio_data:
+
+networks:
+  default:
+    name: ml-network
