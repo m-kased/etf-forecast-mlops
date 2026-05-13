@@ -25,7 +25,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Install API dependencies using the cache and appuser ID
 RUN --mount=type=cache,id=uv-api-cache,target=${UV_CACHE_DIR},uid=1000 \
-    uv pip install -r pyproject.toml
+    uv pip install -r pyproject.toml --extra api
 
 # Copy the API source code
 COPY --chown=appuser:appuser src/api/ src/api/

@@ -15,7 +15,7 @@ COPY --chown=airflow:root uv.lock /opt/airflow/uv.lock
 
 #Install dependencies
 RUN --mount=type=cache,id=uv-cache,target=${UV_CACHE_DIR},uid=50000 \
-    uv pip install -r /opt/airflow/pyproject.toml
+    uv pip install -r /opt/airflow/pyproject.toml --extra airflow
 
 # 3. Copy DAGs and supporting modules
 COPY --chown=airflow:root dags/ /opt/airflow/dags/
