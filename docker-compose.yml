@@ -148,6 +148,21 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: standalone
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
+      - AWS_DEFAULT_REGION=us-east-1
+      - MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL}
+    depends_on:
+      - minio
+      - mlflow
 
 volumes:
   postgres_data:
