@@ -6,14 +6,14 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 
+from common.db import get_active_tickers
+
 load_dotenv()
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(MLFLOW_URI)
 
 ml_models = {}
-
-VALID_TICKERS = ["SPY", "QQQ", "IWM"]
 
 class PredictionInput(BaseModel):
     ticker: str
@@ -25,8 +25,10 @@ class PredictionInput(BaseModel):
     @classmethod
     def validate_ticker(cls, value: str) -> str:
         upper_value = value.upper()
-        if upper_value not in VALID_TICKERS:
-            raise ValueError(f"Invalid ticker '{value}'. Valid tickers are: {', '.join(VALID_TICKERS)}")
+        valid = get_active_tickers()
+        print(f"Valid tickers: {valid}")
+        if upper_value not in valid:
+            raise ValueError(f"Invalid ticker '{value}'. Valid tickers are: {', '.join(valid)}")
         return upper_value
 
 def load_model_for_ticker(ticker: str) -> bool:

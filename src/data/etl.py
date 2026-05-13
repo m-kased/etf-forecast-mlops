@@ -6,11 +6,11 @@ import logging
 from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
 import os
 
-# Constants
-TICKERS = ["SPY", "QQQ", "IWM"]
+from dotenv import load_dotenv
+from common.db import get_active_tickers
+
 HORIZON_BARS = 6
 DATA_DIR = Path("/tmp/market_data")
 MINIO_BUCKET = "market-features"
@@ -124,11 +124,12 @@ def load_data(df: pd.DataFrame, ticker: str) -> str:
 
 def run_pipeline() -> dict[str, str]:
     """Run ETL for all tickers. Returns ticker -> object URL for Airflow XCom."""
-    logger.info("Starting ETL Pipeline...")
+    tickers = get_active_tickers()
+    logger.info("Starting ETL Pipeline for tickers: %s", tickers)
     ensure_bucket_exists(MINIO_BUCKET)
 
     uploaded: dict[str, str] = {}
-    for ticker in TICKERS:
+    for ticker in tickers:
         df = extract_data(ticker)
         if df.empty:
             continue

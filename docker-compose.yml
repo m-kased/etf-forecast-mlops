@@ -34,6 +34,7 @@ x-airflow-common: &airflow-common
   AWS_DEFAULT_REGION: us-east-1
   MLFLOW_S3_ENDPOINT_URL: http://minio:9000
   MLFLOW_TRACKING_URI: http://mlflow:5000
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ml_data
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   REDIS_PASSWORD: "" # Docker Compose Redis has no auth
@@ -56,6 +57,28 @@ services:
       test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       retries: 5
+
+  # DB migrations — runs on every compose-up (idempotent SQL)
+  db-init:
+    image: postgres:15-alpine
+    volumes:
+      - ./docker/postgres-migrations.sql:/migrations.sql:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ml_data" -f /migrations.sql
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  # Adminer — database management tool
+  adminer:
+    image: adminer:latest
+    restart: always
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   # MinIO — S3-compatible storage for raw data + model artifacts
   minio:
@@ -116,6 +139,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       <<: *airflow-common
     # Create required Airflow pools so pipelines run without manual setup
@@ -160,9 +185,14 @@ services:
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - AWS_DEFAULT_REGION=us-east-1
       - MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ml_data
     depends_on:
-      - minio
-      - mlflow
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
 
 volumes:
   postgres_data:

@@ -11,6 +11,8 @@ import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
+from common.db import get_active_tickers
+
 # Setup Environment variables
 load_dotenv()
 
@@ -127,8 +129,9 @@ def train_model(ticker: str = "SPY") -> None:
         print(f"Model successfully trained and logged to MLflow")
 
 def run_training_pipeline() -> None:
-    """Trains models for all ETFs. This is what Airflow will call."""
-    tickers = ["SPY", "QQQ", "IWM"]
+    """Trains models for all active ETFs from the database."""
+    tickers = get_active_tickers()
+    print(f"Training pipeline starting for tickers: {tickers}")
     for ticker in tickers:
         train_model(ticker)
     print("Training pipeline completed")

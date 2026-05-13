@@ -27,11 +27,12 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN --mount=type=cache,id=uv-api-cache,target=${UV_CACHE_DIR},uid=1000 \
     uv pip install -r pyproject.toml --extra api
 
-# Copy the API source code
+# Copy the API and shared source code
 COPY --chown=appuser:appuser src/api/ src/api/
+COPY --chown=appuser:appuser src/common/ src/common/
 
-# Set Python path
-ENV PYTHONPATH="/app"
+# Set Python path so `from common.db import ...` resolves
+ENV PYTHONPATH="/app/src:/app"
 
 # Run Uvicorn server
 CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
