@@ -3,6 +3,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 from src.data.etl import run_pipeline
+from src.ml.train import run_training_pipeline
 
 default_args = {
     'owner': 'mlops_engineer',
@@ -28,3 +29,12 @@ with DAG(
         task_id='extract_transform_load_to_minio',
         python_callable=run_pipeline,
     )
+
+    # Define the Task
+    run_training_task = PythonOperator(
+        task_id='train_models',
+        python_callable=run_training_pipeline,
+    )
+
+    # Set the Task Dependencies
+    run_etl_task >> run_training_task

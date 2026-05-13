@@ -111,7 +111,7 @@ def load_data(df: pd.DataFrame, ticker: str) -> str:
     # Upload to MinIO
     logger.info(f"Uploading {file_name} to MinIO bucket '{MINIO_BUCKET}'...")
     get_s3_client().upload_file(str(local_path), MINIO_BUCKET, file_name)
-    logger.info("Upload successful!")
+    logger.info("Upload successful")
 
     expires = int(os.getenv("MINIO_PRESIGNED_EXPIRES", "86400"))
     download_url = get_s3_presign_client().generate_presigned_url(
@@ -135,7 +135,7 @@ def run_pipeline() -> dict[str, str]:
         clean_df = transform_data(df)
         uploaded[ticker] = load_data(clean_df, ticker)
 
-    logger.info("ETL Pipeline Complete!")
+    logger.info("ETL Pipeline Complete")
     logger.info(
         "Data under %s; MinIO bucket %r; URLs: %s",
         DATA_DIR,

@@ -29,6 +29,10 @@ x-airflow-common: &airflow-common
   MINIO_PRESIGNED_EXPIRES: ${MINIO_PRESIGNED_EXPIRES:-86400}
   MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
   MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+  AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+  AWS_DEFAULT_REGION: us-east-1
+  MLFLOW_S3_ENDPOINT_URL: http://minio:9000
   MLFLOW_TRACKING_URI: http://mlflow:5000
   REDIS_HOST: redis
   REDIS_PORT: "6379"
@@ -94,7 +98,7 @@ services:
       mlflow server 
       --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ml_data 
       --default-artifact-root s3://mlflow-artifacts/ 
-      --host 0.0.0.0
+      --host 0.0.0.0 --allowed-hosts "*" --port 5000
     depends_on:
       postgres:
         condition: service_healthy
