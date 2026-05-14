@@ -194,6 +194,22 @@ services:
       mlflow:
         condition: service_started
 
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui/Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./src:/app/src
+      - ./src/common:/app/src/common
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ml_data
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+      - postgres
+
 volumes:
   postgres_data:
   minio_data:
