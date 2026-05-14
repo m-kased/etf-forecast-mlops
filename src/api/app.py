@@ -32,35 +32,16 @@ class PredictionInput(BaseModel):
         return upper_value
 
 def load_model_for_ticker(ticker: str) -> bool:
-    print(f"Searching MLflow for the best {ticker} model...")
+    registry_name = f"etf-vol-{ticker}"
+    model_uri = f"models:/{registry_name}@champion"
     try:
-        experiment = mlflow.get_experiment_by_name("ETF_Volatility_Prediction") 
-        if not experiment:
-            raise ValueError("Experiment not found.")
-
-        runs = mlflow.search_runs(
-            experiment_ids=[experiment.experiment_id],
-            filter_string=f"params.ticker = '{ticker}'",
-            order_by=["metrics.rmse ASC"],
-            max_results=1
-        )
-        
-        if runs.empty:
-            raise ValueError(f"No models found for {ticker}.")
-
-        best_run_id = runs.iloc[0].run_id
-        best_rmse = runs.iloc[0]["metrics.rmse"]
-        
-        print(f"found best model! Run ID: {best_run_id} | RMSE: {best_rmse:.5f}")
-
-        model_uri = f"runs:/{best_run_id}/xgboost_model"
-        
+        client = mlflow.MlflowClient()
+        alias_info = client.get_model_version_by_alias(registry_name, "champion")
         ml_models[ticker] = mlflow.xgboost.load_model(model_uri)
-        print(f"Model for {ticker} successfully loaded into memory.")
+        print(f"Loaded champion model for {ticker} (version {alias_info.version}) from registry.")
         return True
-        
     except Exception as e:
-        print(f"Failed to load model for {ticker}: {e}")
+        print(f"Failed to load champion model for {ticker}: {e}")
         return False
 
 @asynccontextmanager

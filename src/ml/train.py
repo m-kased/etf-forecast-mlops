@@ -7,6 +7,7 @@ from sklearn.metrics import mean_squared_error
 import math
 import mlflow
 import mlflow.xgboost
+from mlflow import MlflowClient
 import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
@@ -125,8 +126,26 @@ def train_model(ticker: str = "SPY") -> None:
         # log the score and the physical model file to MLflow
         mlflow.log_metric("rmse", rmse)
         mlflow.xgboost.log_model(model, name="xgboost_model")
-        
-        print(f"Model successfully trained and logged to MLflow")
+
+        # Register in Model Registry and auto-promote champion
+        client = MlflowClient()
+        registry_name = f"etf-vol-{ticker}"
+        run_id = mlflow.active_run().info.run_id
+        model_uri = f"runs:/{run_id}/xgboost_model"
+        mv = mlflow.register_model(model_uri, registry_name)
+
+        try:
+            champion_mv = client.get_model_version_by_alias(registry_name, "champion")
+            champion_run = client.get_run(champion_mv.run_id)
+            champion_rmse = champion_run.data.metrics["rmse"]
+            if rmse < champion_rmse:
+                client.set_registered_model_alias(registry_name, "champion", mv.version)
+                print(f"New champion for {ticker}! v{mv.version} (RMSE {rmse:.5f} < {champion_rmse:.5f})")
+            else:
+                print(f"Existing champion retained for {ticker} (RMSE {champion_rmse:.5f} <= {rmse:.5f})")
+        except Exception:
+            client.set_registered_model_alias(registry_name, "champion", mv.version)
+            print(f"First model for {ticker} promoted to champion (v{mv.version})")
 
 def run_training_pipeline() -> None:
     """Trains models for all active ETFs from the database."""
