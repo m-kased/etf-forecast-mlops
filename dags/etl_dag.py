@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta
+import os
+import requests
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 from src.data.etl import run_pipeline
 from src.ml.train import run_training_pipeline
+
+API_BASE_URL = os.getenv("API_BASE_URL", "http://api:8000")
 
 default_args = {
     'owner': 'mlops_engineer',
@@ -24,17 +28,31 @@ with DAG(
     tags=['finance', 'etl'],
 ) as dag:
 
-    # Define the Task
     run_etl_task = PythonOperator(
         task_id='extract_transform_load_to_minio',
         python_callable=run_pipeline,
     )
 
-    # Define the Task
     run_training_task = PythonOperator(
         task_id='train_models',
         python_callable=run_training_pipeline,
     )
 
-    # Set the Task Dependencies
-    run_etl_task >> run_training_task
+    def reload_api_models(**context):
+        """Reload API models only if training promoted a new champion."""
+        # XCom pull the new champion from the train_models task
+        new_champion = context["ti"].xcom_pull(task_ids="train_models")
+        if not new_champion:
+            print("No new champion promoted — skipping API reload.")
+            return
+        # Reload the API models
+        resp = requests.post(f"{API_BASE_URL}/reload", timeout=60)
+        resp.raise_for_status()
+        print(f"API reload response: {resp.json()}")
+
+    reload_task = PythonOperator(
+        task_id='reload_api_models',
+        python_callable=reload_api_models,
+    )
+
+    run_etl_task >> run_training_task >> reload_task

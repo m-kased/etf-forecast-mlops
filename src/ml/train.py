@@ -134,6 +134,7 @@ def train_model(ticker: str = "SPY") -> None:
         model_uri = f"runs:/{run_id}/xgboost_model"
         mv = mlflow.register_model(model_uri, registry_name)
 
+        promoted = False
         try:
             champion_mv = client.get_model_version_by_alias(registry_name, "champion")
             champion_run = client.get_run(champion_mv.run_id)
@@ -141,19 +142,27 @@ def train_model(ticker: str = "SPY") -> None:
             if rmse < champion_rmse:
                 client.set_registered_model_alias(registry_name, "champion", mv.version)
                 print(f"New champion for {ticker}! v{mv.version} (RMSE {rmse:.5f} < {champion_rmse:.5f})")
+                promoted = True
             else:
                 print(f"Existing champion retained for {ticker} (RMSE {champion_rmse:.5f} <= {rmse:.5f})")
         except Exception:
             client.set_registered_model_alias(registry_name, "champion", mv.version)
             print(f"First model for {ticker} promoted to champion (v{mv.version})")
+            promoted = True
 
-def run_training_pipeline() -> None:
-    """Trains models for all active ETFs from the database."""
+        return promoted
+
+
+def run_training_pipeline() -> bool:
+    """Trains models for all active ETFs. Returns True if any champion was promoted."""
     tickers = get_active_tickers()
     print(f"Training pipeline starting for tickers: {tickers}")
+    any_promoted = False
     for ticker in tickers:
-        train_model(ticker)
-    print("Training pipeline completed")
+        if train_model(ticker):
+            any_promoted = True
+    print(f"Training pipeline completed (new_champion={any_promoted})")
+    return any_promoted
 
 # for testing
 if __name__ == "__main__":
