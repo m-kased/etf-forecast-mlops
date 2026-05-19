@@ -8,11 +8,6 @@ output "prometheus_namespace" {
   value       = "monitoring"
 }
 
-output "airflow_namespace" {
-  description = "Namespace where Airflow is deployed"
-  value       = "airflow"
-}
-
 output "mlflow_namespace" {
   description = "Namespace where MLflow is deployed"
   value       = "mlflow"

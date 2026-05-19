@@ -94,22 +94,10 @@ variable "redis_node_type" {
   default     = "cache.t3.micro"
 }
 
-# --- Airflow ---
-variable "airflow_git_repo" {
-  description = "Git repository URL for Airflow DAG sync"
-  type        = string
-}
-
-variable "airflow_git_branch" {
-  description = "Git branch for Airflow DAG sync"
-  type        = string
-  default     = "main"
-}
-
 variable "ecr_repositories" {
   description = "ECR repository suffixes (full name: {project}-{env}-{suffix})"
   type        = list(string)
-  default     = ["api", "ui"]
+  default     = ["api", "ui", "airflow"]
 }
 
 variable "app_namespaces" {

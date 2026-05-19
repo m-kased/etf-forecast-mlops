@@ -12,10 +12,6 @@ resource "terraform_data" "namespace_monitoring" {
   input = var.namespace_monitoring
 }
 
-resource "terraform_data" "namespace_airflow" {
-  input = var.namespace_airflow
-}
-
 resource "terraform_data" "namespace_mlflow" {
   input = var.namespace_mlflow
 }

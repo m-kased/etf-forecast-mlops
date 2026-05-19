@@ -65,24 +65,8 @@ variable "rds_secret_arn" {
   type        = string
 }
 
-variable "redis_endpoint" {
-  description = "ElastiCache Redis endpoint"
-  type        = string
-}
-
-variable "redis_port" {
-  description = "ElastiCache Redis port"
-  type        = number
-  default     = 6379
-}
-
 variable "mlflow_artifacts_bucket" {
   description = "S3 bucket name for MLflow artifacts"
-  type        = string
-}
-
-variable "raw_data_bucket" {
-  description = "S3 bucket name for raw data"
   type        = string
 }
 
@@ -91,32 +75,10 @@ variable "mlflow_role_arn" {
   type        = string
 }
 
-variable "airflow_role_arn" {
-  description = "IAM role ARN for Airflow pods"
-  type        = string
-}
-
-variable "api_role_arn" {
-  description = "IAM role ARN for API pods"
-  type        = string
-}
-
 variable "region" {
   description = "AWS region"
   type        = string
   default     = "us-east-1"
-}
-
-variable "airflow_git_repo" {
-  description = "Git repository URL for Airflow DAGs"
-  type        = string
-  default     = "https://github.com/m-kased/etf-forecast-mlops.git"
-}
-
-variable "airflow_git_branch" {
-  description = "Git branch for Airflow DAGs"
-  type        = string
-  default     = "main"
 }
 
 variable "tags" {
@@ -139,11 +101,6 @@ variable "namespace_cert_manager" {
 
 variable "namespace_monitoring" {
   description = "UID of monitoring namespace"
-  type        = string
-}
-
-variable "namespace_airflow" {
-  description = "UID of airflow namespace"
   type        = string
 }
 

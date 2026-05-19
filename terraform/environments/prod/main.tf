@@ -120,15 +120,20 @@ module "elasticache" {
 module "kubernetes" {
   source = "../../modules/kubernetes"
 
-  project_name   = var.project_name
-  environment    = var.environment
-  app_namespaces = var.app_namespaces
-  rds_endpoint   = module.rds.db_endpoint
-  rds_port       = module.rds.db_port
-  rds_username   = module.rds.db_username
-  rds_password   = module.rds.db_password
-  rds_db_name    = module.rds.db_name
-  tags           = local.tags
+  project_name            = var.project_name
+  environment             = var.environment
+  app_namespaces          = var.app_namespaces
+  rds_endpoint            = module.rds.db_endpoint
+  rds_port                = module.rds.db_port
+  rds_username            = module.rds.db_username
+  rds_password            = module.rds.db_password
+  rds_db_name             = module.rds.db_name
+  region                  = var.region
+  redis_endpoint          = module.elasticache.redis_endpoint
+  redis_port              = module.elasticache.redis_port
+  mlflow_artifacts_bucket = module.s3.mlflow_artifacts_bucket_name
+  raw_data_bucket         = module.s3.raw_data_bucket_name
+  tags                    = local.tags
 }
 
 # ──────────────────────────────────────────────
@@ -140,7 +145,6 @@ module "helm" {
   namespace_istio_system = module.kubernetes.namespace_istio_system
   namespace_cert_manager = module.kubernetes.namespace_cert_manager
   namespace_monitoring   = module.kubernetes.namespace_monitoring
-  namespace_airflow      = module.kubernetes.namespace_airflow
   namespace_mlflow       = module.kubernetes.namespace_mlflow
 
   project_name            = var.project_name
@@ -156,15 +160,8 @@ module "helm" {
   rds_username            = module.rds.db_username
   rds_password            = module.rds.db_password
   rds_secret_arn          = module.rds.secrets_manager_secret_arn
-  redis_endpoint          = module.elasticache.redis_endpoint
-  redis_port              = module.elasticache.redis_port
   mlflow_artifacts_bucket = module.s3.mlflow_artifacts_bucket_name
-  raw_data_bucket         = module.s3.raw_data_bucket_name
   mlflow_role_arn         = module.iam.mlflow_role_arn
-  airflow_role_arn        = module.iam.airflow_role_arn
-  api_role_arn            = module.iam.api_role_arn
   region                  = var.region
-  airflow_git_repo        = var.airflow_git_repo
-  airflow_git_branch      = var.airflow_git_branch
   tags                    = local.tags
 }

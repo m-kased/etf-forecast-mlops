@@ -22,3 +22,8 @@ output "ui_repository_url" {
   description = "ECR repository URL for the UI image"
   value       = try(aws_ecr_repository.this["ui"].repository_url, null)
 }
+
+output "airflow_repository_url" {
+  description = "ECR repository URL for the Airflow image"
+  value       = try(aws_ecr_repository.this["airflow"].repository_url, null)
+}

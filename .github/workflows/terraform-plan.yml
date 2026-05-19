@@ -121,7 +121,6 @@ jobs:
           TF_VAR_environment: ${{ matrix.environment }}
           TF_VAR_region: ${{ vars.AWS_REGION }}
           TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
-          TF_VAR_airflow_git_repo: ${{ vars.TF_VAR_AIRFLOW_GIT_REPO }}
         continue-on-error: true
 
       - name: Post plan to PR

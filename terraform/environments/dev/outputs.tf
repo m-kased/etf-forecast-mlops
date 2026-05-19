@@ -67,3 +67,13 @@ output "api_irsa_role_arn" {
   description = "IAM role ARN for API pods (IRSA)"
   value       = module.iam.api_role_arn
 }
+
+output "airflow_irsa_role_arn" {
+  description = "IAM role ARN for Airflow pods (IRSA) — set as AIRFLOW_IRSA_ROLE_ARN in GitHub"
+  value       = module.iam.airflow_role_arn
+}
+
+output "ecr_airflow_repository_url" {
+  description = "ECR repository URL for Airflow images"
+  value       = module.ecr.airflow_repository_url
+}

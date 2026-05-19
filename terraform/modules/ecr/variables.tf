@@ -11,7 +11,7 @@ variable "environment" {
 variable "repositories" {
   description = "List of ECR repository suffixes (e.g. api, ui)"
   type        = list(string)
-  default     = ["api", "ui"]
+  default     = ["api", "ui", "airflow"]
 }
 
 variable "image_tag_mutability" {
