@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+import logging
 import os
+from datetime import datetime, timedelta
 
 import requests
 from airflow import DAG
@@ -7,6 +8,8 @@ from airflow.operators.python import PythonOperator
 
 from src.data.etl import run_pipeline
 from src.ml.train import run_training_pipeline
+
+logger = logging.getLogger(__name__)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://api:8000")
 
@@ -25,11 +28,11 @@ def reload_api_models(**context):
     ti = context["ti"]
     new_champion = ti.xcom_pull(task_ids="train_models")
     if not new_champion:
-        ti.log.info("No new champion promoted — skipping API reload.")
+        logger.info("No new champion promoted — skipping API reload.")
         return
     resp = requests.post(f"{API_BASE_URL}/reload", timeout=60)
     resp.raise_for_status()
-    ti.log.info("API reload response: %s", resp.json())
+    logger.info("API reload response: %s", resp.json())
 
 
 with DAG(
