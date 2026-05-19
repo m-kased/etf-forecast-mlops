@@ -115,37 +115,10 @@ module "elasticache" {
 }
 
 # ──────────────────────────────────────────────
-#  Kubernetes (namespaces, secrets)
-# ──────────────────────────────────────────────
-module "kubernetes" {
-  source = "../../modules/kubernetes"
-
-  project_name            = var.project_name
-  environment             = var.environment
-  app_namespaces          = var.app_namespaces
-  rds_endpoint            = module.rds.db_endpoint
-  rds_port                = module.rds.db_port
-  rds_username            = module.rds.db_username
-  rds_password            = module.rds.db_password
-  rds_db_name             = module.rds.db_name
-  region                  = var.region
-  redis_endpoint          = module.elasticache.redis_endpoint
-  redis_port              = module.elasticache.redis_port
-  mlflow_artifacts_bucket = module.s3.mlflow_artifacts_bucket_name
-  raw_data_bucket         = module.s3.raw_data_bucket_name
-  tags                    = local.tags
-}
-
-# ──────────────────────────────────────────────
-#  Helm Charts (platform services)
+#  Helm (namespaces + platform charts)
 # ──────────────────────────────────────────────
 module "helm" {
   source = "../../modules/helm"
-
-  namespace_istio_system = module.kubernetes.namespace_istio_system
-  namespace_cert_manager = module.kubernetes.namespace_cert_manager
-  namespace_monitoring   = module.kubernetes.namespace_monitoring
-  namespace_mlflow       = module.kubernetes.namespace_mlflow
 
   project_name            = var.project_name
   environment             = var.environment
@@ -164,4 +137,32 @@ module "helm" {
   mlflow_role_arn         = module.iam.mlflow_role_arn
   region                  = var.region
   tags                    = local.tags
+}
+
+# ──────────────────────────────────────────────
+#  Kubernetes (secrets, app namespaces, ingress TLS)
+# ──────────────────────────────────────────────
+module "kubernetes" {
+  source = "../../modules/kubernetes"
+
+  project_name            = var.project_name
+  environment             = var.environment
+  app_namespaces          = var.app_namespaces
+  rds_endpoint            = module.rds.db_endpoint
+  rds_port                = module.rds.db_port
+  rds_username            = module.rds.db_username
+  rds_password            = module.rds.db_password
+  rds_db_name             = module.rds.db_name
+  region                  = var.region
+  redis_endpoint          = module.elasticache.redis_endpoint
+  redis_port              = module.elasticache.redis_port
+  mlflow_artifacts_bucket = module.s3.mlflow_artifacts_bucket_name
+  raw_data_bucket         = module.s3.raw_data_bucket_name
+  acme_email              = var.acme_email
+  acme_use_staging        = var.acme_use_staging
+  ingress_ui_host         = var.ingress_ui_host
+  ingress_api_host        = var.ingress_api_host
+  tags                    = local.tags
+
+  depends_on = [module.helm]
 }

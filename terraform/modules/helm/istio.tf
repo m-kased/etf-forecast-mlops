@@ -12,7 +12,7 @@ resource "helm_release" "istio_base" {
 
   values = [file("${path.module}/values/istio-base.yaml")]
 
-  depends_on = [terraform_data.namespace_istio_system]
+  depends_on = [kubernetes_namespace.istio_system]
 }
 
 # ---------------------------------------------------------------------------

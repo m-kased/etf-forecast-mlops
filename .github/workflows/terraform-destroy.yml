@@ -82,6 +82,7 @@ jobs:
           TF_VAR_environment: ${{ inputs.environment }}
           TF_VAR_region: ${{ vars.AWS_REGION }}
           TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_acme_email: ${{ vars.TF_VAR_ACME_EMAIL }}
 
       - name: Terraform Destroy
         run: terraform destroy -input=false -auto-approve ${{ steps.targets.outputs.flags }}
@@ -90,3 +91,4 @@ jobs:
           TF_VAR_environment: ${{ inputs.environment }}
           TF_VAR_region: ${{ vars.AWS_REGION }}
           TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_acme_email: ${{ vars.TF_VAR_ACME_EMAIL }}

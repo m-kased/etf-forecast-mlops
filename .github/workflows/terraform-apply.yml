@@ -77,6 +77,7 @@ jobs:
           TF_VAR_environment: ${{ matrix.environment }}
           TF_VAR_region: ${{ vars.AWS_REGION }}
           TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_acme_email: ${{ vars.TF_VAR_ACME_EMAIL }}
 
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan
@@ -85,3 +86,4 @@ jobs:
           TF_VAR_environment: ${{ matrix.environment }}
           TF_VAR_region: ${{ vars.AWS_REGION }}
           TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_acme_email: ${{ vars.TF_VAR_ACME_EMAIL }}

@@ -15,5 +15,6 @@
 
 {{- if .Values.istio.enabled }}
 
-  Istio VirtualService enabled for hosts: {{ .Values.istio.hosts | join ", " }}
+  Public URL: https://{{ index .Values.istio.hosts 0 }}{{ .Values.istio.prefix }}
+  (DNS A/CNAME for {{ .Values.istio.hosts | join ", " }} → istio-ingressgateway LoadBalancer; TLS via cert-manager)
 {{- end }}

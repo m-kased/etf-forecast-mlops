@@ -100,6 +100,29 @@ variable "ecr_repositories" {
   default     = ["api", "ui", "airflow"]
 }
 
+variable "acme_email" {
+  description = "Email for Let's Encrypt (cert-manager ClusterIssuer)"
+  type        = string
+}
+
+variable "acme_use_staging" {
+  description = "Use Let's Encrypt staging CA (dev testing only)"
+  type        = bool
+  default     = false
+}
+
+variable "ingress_ui_host" {
+  description = "Public hostname for the UI"
+  type        = string
+  default     = "etf-forecast-mlops.mohamed-elkased.com"
+}
+
+variable "ingress_api_host" {
+  description = "Public hostname for the API"
+  type        = string
+  default     = "etf-forecast-mlops-api.mohamed-elkased.com"
+}
+
 variable "app_namespaces" {
   description = "Namespaces for application workloads (API, UI, etc.) — core platform namespaces are fixed in the kubernetes module"
   type = list(object({

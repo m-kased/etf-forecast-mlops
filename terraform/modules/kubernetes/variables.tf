@@ -84,3 +84,28 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# --- Public ingress ---
+
+variable "acme_email" {
+  description = "Email address for Let's Encrypt ACME registration"
+  type        = string
+}
+
+variable "acme_use_staging" {
+  description = "Use Let's Encrypt staging CA (for testing; browsers will not trust certs)"
+  type        = bool
+  default     = false
+}
+
+variable "ingress_ui_host" {
+  description = "Public hostname for the Streamlit UI"
+  type        = string
+  default     = "etf-forecast-mlops.mohamed-elkased.com"
+}
+
+variable "ingress_api_host" {
+  description = "Public hostname for the FastAPI service"
+  type        = string
+  default     = "etf-forecast-mlops-api.mohamed-elkased.com"
+}

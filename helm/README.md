@@ -55,7 +55,14 @@ helm upgrade --install ui ./helm/charts/app \
 | `serviceAccount.annotations` | IRSA role ARN, etc. |
 | `resources` | CPU/memory limits |
 | `livenessProbe` / `readinessProbe` | Health checks |
-| `istio.enabled` / `istio.hosts` | Optional Istio VirtualService |
+| `istio.enabled` / `istio.hosts` | Istio VirtualService + TLS Gateway (`istio-ingressgateway`) |
+
+Public URLs (after Terraform + DNS):
+
+| App | URL |
+|-----|-----|
+| UI | `https://etf-forecast-mlops.mohamed-elkased.com` |
+| API | `https://etf-forecast-mlops-api.mohamed-elkased.com` |
 
 Release name becomes the Deployment/Service name (e.g. release `api` → Service `api` in namespace `app`).
 

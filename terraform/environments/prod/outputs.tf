@@ -77,3 +77,13 @@ output "ecr_airflow_repository_url" {
   description = "ECR repository URL for Airflow images"
   value       = module.ecr.airflow_repository_url
 }
+
+output "ingress_ui_url" {
+  description = "Public UI URL"
+  value       = "https://${module.kubernetes.ingress_ui_host}"
+}
+
+output "ingress_api_url" {
+  description = "Public API URL"
+  value       = "https://${module.kubernetes.ingress_api_host}"
+}

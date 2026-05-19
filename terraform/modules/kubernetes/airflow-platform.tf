@@ -21,7 +21,7 @@ resource "random_password" "airflow_webserver_secret" {
 resource "kubernetes_secret" "airflow_runtime" {
   metadata {
     name      = "airflow-runtime-secrets"
-    namespace = kubernetes_namespace.airflow.metadata[0].name
+    namespace = "airflow"
   }
 
   type = "Opaque"
@@ -37,7 +37,7 @@ resource "kubernetes_secret" "airflow_runtime" {
 resource "kubernetes_secret" "airflow_app" {
   metadata {
     name      = "airflow-app-credentials"
-    namespace = kubernetes_namespace.airflow.metadata[0].name
+    namespace = "airflow"
   }
 
   type = "Opaque"
@@ -50,7 +50,7 @@ resource "kubernetes_secret" "airflow_app" {
 resource "kubernetes_config_map" "airflow_platform" {
   metadata {
     name      = "airflow-platform-config"
-    namespace = kubernetes_namespace.airflow.metadata[0].name
+    namespace = "airflow"
   }
 
   data = {

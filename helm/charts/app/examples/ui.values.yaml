@@ -40,3 +40,12 @@ readinessProbe:
     port: http
   initialDelaySeconds: 15
   periodSeconds: 10
+
+istio:
+  enabled: true
+  gateway:
+    name: istio-ingressgateway
+    namespace: istio-system
+  hosts:
+    - etf-forecast-mlops.mohamed-elkased.com
+  prefix: /

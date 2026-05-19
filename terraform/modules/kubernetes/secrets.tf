@@ -1,7 +1,7 @@
 resource "kubernetes_secret" "airflow_rds" {
   metadata {
     name      = "airflow-rds-credentials"
-    namespace = kubernetes_namespace.airflow.metadata[0].name
+    namespace = "airflow"
   }
 
   data = {
@@ -14,7 +14,7 @@ resource "kubernetes_secret" "airflow_rds" {
 resource "kubernetes_secret" "mlflow_rds" {
   metadata {
     name      = "mlflow-rds-credentials"
-    namespace = kubernetes_namespace.mlflow.metadata[0].name
+    namespace = "mlflow"
   }
 
   data = {

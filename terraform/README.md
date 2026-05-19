@@ -26,6 +26,22 @@ AWS infrastructure for the ETF Forecast MLOps platform, provisioned with Terrafo
 
 > **Note:** Application images (API, UI, Airflow) are built and deployed via GitHub Actions (`app-deploy`, `airflow-deploy`). The Airflow image contains dependencies and `src/`; DAGs are synced from git (git-sync). ECR and the `airflow` namespace/secrets/IRSA are provisioned by Terraform; the Airflow Helm release is not.
 
+### Apply order (no circular dependency)
+
+1. **`helm` module** — platform namespaces, cert-manager, Istio, MLflow, monitoring  
+2. **`kubernetes` module** — app namespace, secrets, cert-manager/Istio ingress manifests (`depends_on` helm)
+
+### Public ingress (UI + API)
+
+The **kubernetes** module (after helm) provisions `ClusterIssuer`, `Certificate`, and Istio `Gateway` `istio-ingressgateway` (TLS on port 443).
+
+| Host | Service |
+|------|---------|
+| `etf-forecast-mlops.mohamed-elkased.com` | UI (Streamlit) |
+| `etf-forecast-mlops-api.mohamed-elkased.com` | API (FastAPI) |
+
+**Required:** `TF_VAR_acme_email` (Let's Encrypt registration). Point both DNS names to the `istio-ingressgateway` LoadBalancer before certificates can issue.
+
 ### ECR repositories
 
 Per environment, Terraform creates:
@@ -54,8 +70,8 @@ terraform/
     ├── s3/             # S3 buckets
     ├── iam/            # IAM roles (EKS + IRSA)
     ├── ecr/            # ECR repositories for API, UI, and Airflow images
-    ├── kubernetes/     # Namespaces and Kubernetes secrets
-    └── helm/           # Helm chart releases (platform components)
+    ├── helm/           # Platform namespaces + Helm releases
+    └── kubernetes/     # App namespace, secrets, ingress TLS (after helm)
 ```
 
 ## Prerequisites
@@ -106,15 +122,15 @@ terraform apply
 
 ## Kubernetes namespaces
 
-**Core platform namespaces** (fixed resources in `modules/kubernetes/core-namespaces.tf`):
+**Core platform namespaces** (`modules/helm/namespaces.tf`, created before Helm releases):
 
-| Resource | Namespace |
-|----------|-----------|
-| `kubernetes_namespace.istio_system` | `istio-system` |
-| `kubernetes_namespace.cert_manager` | `cert-manager` |
-| `kubernetes_namespace.monitoring` | `monitoring` |
-| `kubernetes_namespace.airflow` | `airflow` |
-| `kubernetes_namespace.mlflow` | `mlflow` |
+| Namespace | Purpose |
+|-----------|---------|
+| `istio-system` | Istio control plane + ingress gateway |
+| `cert-manager` | TLS certificates |
+| `monitoring` | Prometheus, Grafana, Loki |
+| `airflow` | Airflow (deployed via GitHub Actions) |
+| `mlflow` | MLflow tracking |
 
 Each core namespace UID is passed to the helm module and used in `depends_on` so charts install only after their namespace exists.
 

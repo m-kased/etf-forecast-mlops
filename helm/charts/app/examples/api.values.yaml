@@ -1,7 +1,7 @@
 namespace: app
 
 image:
-  repository: ""  # set in CI, e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/etf-forecast-api
+  repository: "" # set in CI, e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/etf-forecast-api
   tag: ""
 
 containerPort: 8000
@@ -44,3 +44,12 @@ readinessProbe:
     port: http
   initialDelaySeconds: 10
   periodSeconds: 10
+
+istio:
+  enabled: true
+  gateway:
+    name: istio-ingressgateway
+    namespace: istio-system
+  hosts:
+    - etf-forecast-mlops-api.mohamed-elkased.com
+  prefix: /
