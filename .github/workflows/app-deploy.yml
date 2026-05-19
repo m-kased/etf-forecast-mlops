@@ -1,0 +1,193 @@
+name: Build and Deploy Apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/api/**"
+      - "src/ui/**"
+      - "src/common/**"
+      - "docker/api/**"
+      - "docker/ui/**"
+      - "helm/charts/app/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/app-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      app:
+        description: "Application to build and deploy"
+        required: true
+        type: choice
+        options:
+          - all
+          - api
+          - ui
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: app-deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve matrix
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.cfg.outputs.environment }}
+      apps: ${{ steps.cfg.outputs.apps }}
+    steps:
+      - name: Set environment and apps
+        id: cfg
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ inputs.environment }}"
+            APP="${{ inputs.app }}"
+          else
+            ENV="dev"
+            APP="all"
+          fi
+
+          case "$APP" in
+            api) APPS='["api"]' ;;
+            ui)  APPS='["ui"]' ;;
+            *)   APPS='["api","ui"]' ;;
+          esac
+
+          echo "environment=$ENV" >> "$GITHUB_OUTPUT"
+          echo "apps=$APPS" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build & push (${{ matrix.app }})
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.resolve.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image variables
+        id: image
+        run: |
+          PROJECT="${{ vars.TF_VAR_PROJECT_NAME }}"
+          ENV="${{ needs.resolve.outputs.environment }}"
+          APP="${{ matrix.app }}"
+          REPO_NAME="${PROJECT}-${ENV}-${APP}"
+          REGISTRY="${{ steps.ecr-login.outputs.registry }}"
+          IMAGE_TAG="${GITHUB_SHA::7}"
+
+          echo "repository=${REGISTRY}/${REPO_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=docker/${APP}/Dockerfile" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.image.outputs.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.image.outputs.repository }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.repository }}:latest
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+      - name: Write image metadata
+        run: |
+          mkdir -p /tmp/app-images
+          echo "${{ steps.image.outputs.repository }}" > "/tmp/app-images/${{ matrix.app }}-repository"
+          echo "${{ steps.image.outputs.tag }}" > "/tmp/app-images/${{ matrix.app }}-tag"
+
+      - name: Upload image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.app }}
+          path: /tmp/app-images/${{ matrix.app }}-*
+
+  deploy:
+    name: Deploy (${{ matrix.app }})
+    needs: [resolve, build-push]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.resolve.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.app }}
+          path: /tmp/app-images
+
+      - name: Load image metadata
+        id: image
+        run: |
+          echo "repository=$(cat /tmp/app-images/${{ matrix.app }}-repository)" >> "$GITHUB_OUTPUT"
+          echo "tag=$(cat /tmp/app-images/${{ matrix.app }}-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Update kubeconfig
+        env:
+          CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || format('{0}-{1}-eks', vars.TF_VAR_PROJECT_NAME, needs.resolve.outputs.environment) }}
+        run: |
+          aws eks update-kubeconfig \
+            --name "${CLUSTER_NAME}" \
+            --region "${{ vars.AWS_REGION }}"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.3"
+
+      - name: Deploy API
+        if: matrix.app == 'api'
+        run: |
+          helm upgrade --install api ./helm/charts/app \
+            --namespace app \
+            --values ./helm/charts/app/examples/api.values.yaml \
+            --set image.repository="${{ steps.image.outputs.repository }}" \
+            --set image.tag="${{ steps.image.outputs.tag }}" \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ vars.API_IRSA_ROLE_ARN }}"
+
+      - name: Deploy UI
+        if: matrix.app == 'ui'
+        run: |
+          helm upgrade --install ui ./helm/charts/app \
+            --namespace app \
+            --values ./helm/charts/app/examples/ui.values.yaml \
+            --set image.repository="${{ steps.image.outputs.repository }}" \
+            --set image.tag="${{ steps.image.outputs.tag }}"

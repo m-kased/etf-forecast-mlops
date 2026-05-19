@@ -9,10 +9,26 @@ One **Helm release per application**. Install the same chart multiple times with
 | `api` | FastAPI inference service |
 | `ui` | Streamlit dashboard |
 
-### Deploy API and UI
+### GitHub Actions (recommended)
+
+Push to `main` (paths under `src/`, `docker/`, `helm/charts/app/`) deploys **both** apps to **dev**.
+
+Manual run: **Actions → Build and Deploy Apps** — choose environment (`dev` / `prod`) and app (`all` / `api` / `ui`).
+
+**GitHub Environment variables** (per `dev` / `prod`):
+
+| Variable | Description |
+|----------|-------------|
+| `AWS_ROLE_ARN` | OIDC role with ECR push + EKS access |
+| `AWS_REGION` | AWS region |
+| `TF_VAR_PROJECT_NAME` | e.g. `etf-forecast` (used for ECR repo and cluster name) |
+| `API_IRSA_ROLE_ARN` | IRSA role for API pods (from `terraform output api_irsa_role_arn`) |
+| `EKS_CLUSTER_NAME` | Optional; defaults to `{project}-{env}-eks` |
+
+### Manual Helm install
 
 ```bash
-# Namespace must exist before install (e.g. created by Terraform or kubectl)
+# Namespace must exist (created by Terraform kubernetes module)
 
 helm upgrade --install api ./helm/charts/app \
   --namespace app \

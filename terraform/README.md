@@ -25,7 +25,18 @@ AWS infrastructure for the ETF Forecast MLOps platform, provisioned with Terrafo
 | airflow | airflow | Pipeline orchestration (KubernetesExecutor) |
 | mlflow | mlflow | Model registry + experiment tracking |
 
-> **Note:** The application chart (API + UI) is **not** deployed by Terraform — it's deployed via GitHub Actions CI/CD.
+> **Note:** Application images (API + UI) are built and deployed via the `app-deploy` GitHub Actions workflow. ECR repositories are provisioned by Terraform.
+
+### ECR repositories
+
+Per environment, Terraform creates:
+
+| Repository | Example name (dev) |
+|------------|-------------------|
+| API | `etf-forecast-dev-api` |
+| UI | `etf-forecast-dev-ui` |
+
+Outputs: `ecr_api_repository_url`, `ecr_ui_repository_url`, `api_irsa_role_arn`
 
 ## Directory Structure
 
@@ -42,6 +53,7 @@ terraform/
     ├── elasticache/    # ElastiCache Redis
     ├── s3/             # S3 buckets
     ├── iam/            # IAM roles (EKS + IRSA)
+    ├── ecr/            # ECR repositories for API and UI images
     ├── kubernetes/     # Namespaces and Kubernetes secrets
     └── helm/           # Helm chart releases (platform components)
 ```

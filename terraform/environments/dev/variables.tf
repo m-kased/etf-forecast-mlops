@@ -106,6 +106,12 @@ variable "airflow_git_branch" {
   default     = "main"
 }
 
+variable "ecr_repositories" {
+  description = "ECR repository suffixes (full name: {project}-{env}-{suffix})"
+  type        = list(string)
+  default     = ["api", "ui"]
+}
+
 variable "app_namespaces" {
   description = "Namespaces for application workloads (API, UI, etc.) — core platform namespaces are fixed in the kubernetes module"
   type = list(object({

@@ -47,3 +47,23 @@ output "app_namespace_names" {
   description = "App deployment namespace names"
   value       = module.kubernetes.app_namespace_names
 }
+
+output "ecr_api_repository_url" {
+  description = "ECR repository URL for API images"
+  value       = module.ecr.api_repository_url
+}
+
+output "ecr_ui_repository_url" {
+  description = "ECR repository URL for UI images"
+  value       = module.ecr.ui_repository_url
+}
+
+output "ecr_repository_urls" {
+  description = "All ECR repository URLs"
+  value       = module.ecr.repository_urls
+}
+
+output "api_irsa_role_arn" {
+  description = "IAM role ARN for API pods (IRSA)"
+  value       = module.iam.api_role_arn
+}
