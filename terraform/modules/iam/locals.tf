@@ -2,7 +2,7 @@ locals {
   name_prefix = "${var.project_name}-${var.environment}"
 
   common_tags = merge(var.tags, {
-    Module      = "iam"
+    Module = "iam"
   })
 
   irsa_roles = {

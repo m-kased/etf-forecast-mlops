@@ -39,14 +39,14 @@ resource "aws_db_instance" "this" {
   username = var.db_username
   password = random_password.master.result
 
-  multi_az            = var.multi_az
-  db_subnet_group_name = aws_db_subnet_group.this.name
+  multi_az               = var.multi_az
+  db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   parameter_group_name   = aws_db_parameter_group.this.name
 
-  backup_retention_period = var.backup_retention_period
-  deletion_protection     = var.deletion_protection
-  skip_final_snapshot     = var.skip_final_snapshot
+  backup_retention_period   = var.backup_retention_period
+  deletion_protection       = var.deletion_protection
+  skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = var.skip_final_snapshot ? null : "${local.name_prefix}-postgres-final"
 
   performance_insights_enabled = true
