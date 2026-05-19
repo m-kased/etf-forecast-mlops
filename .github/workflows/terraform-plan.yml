@@ -127,11 +127,16 @@ jobs:
       - name: Post plan to PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}
+          ENVIRONMENT: ${{ matrix.environment }}
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const maxLength = 65000;
-            let planOutput = `${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}`;
+            const commentMarker = `### Terraform Plan — \`${process.env.ENVIRONMENT}\``;
 
+            let planOutput = process.env.PLAN_OUTPUT || '';
             let truncated = false;
             if (planOutput.length > maxLength) {
               truncated = true;
@@ -142,7 +147,7 @@ jobs:
               ? '\n\n**⚠ Plan output was truncated. See the full plan in the workflow run logs.**\n'
               : '';
 
-            const body = `### Terraform Plan — \`${{ matrix.environment }}\`
+            const body = `${commentMarker}
 
             | Step | Status |
             |------|--------|
@@ -161,12 +166,31 @@ jobs:
 
             *Triggered by @${{ github.actor }} on \`${{ github.event.pull_request.head.ref }}\`*`;
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              issue_number: context.issue.number,
             });
+
+            const botComment = comments.find((comment) => {
+              return comment.user.type === 'Bot' && comment.body.includes(commentMarker);
+            });
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              });
+            }
 
       - name: Plan status
         if: steps.plan.outcome == 'failure'
