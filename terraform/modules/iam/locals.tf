@@ -3,9 +3,6 @@ locals {
 
   common_tags = merge(var.tags, {
     Module      = "iam"
-    Environment = var.environment
-    Project     = var.project_name
-    ManagedBy   = "terraform"
   })
 
   irsa_roles = {
