@@ -14,8 +14,12 @@ st.title("ETF Volatility Predictor")
 st.write("Enter the market indicators to predict the next-day volatility.")
 
 with st.expander("How to use this tool"):
-    st.write("This model predicts the next-day volatility of an ETF using Machine Learning.")
-    st.write("Use the input fields below to set the financial indicators. Hover over the '?' icon next to each input for specific definitions.")
+    st.write(
+        "This model predicts the next-day volatility of an ETF using Machine Learning."
+    )
+    st.write(
+        "Use the input fields below to set the financial indicators. Hover over the '?' icon next to each input for specific definitions."
+    )
 
 active_tickers = get_active_tickers()
 if not active_tickers:
@@ -52,31 +56,35 @@ if st.button("Predict Volatility"):
         "ticker": ticker,
         "log_return": log_return,
         "RSI_14": rsi_14,
-        "MACD_12_26_9": macd
+        "MACD_12_26_9": macd,
     }
-    
+
     with st.spinner(f"Requesting prediction for {ticker}..."):
         try:
             response = requests.post(f"{API_URL}/predict", json=payload)
-            
+
             if response.status_code == 200:
                 result = response.json()
                 pred_vol = result["predicted_volatility"]
-                
+
                 st.success("Prediction successful!")
-                st.metric(label=f"Predicted Volatility ({ticker})", value=f"{pred_vol:.4%}")
-                
-                intensity = min(pred_vol / 0.05, 1.0) 
+                st.metric(
+                    label=f"Predicted Volatility ({ticker})", value=f"{pred_vol:.4%}"
+                )
+
+                intensity = min(pred_vol / 0.05, 1.0)
                 st.write("Volatility Intensity:")
                 st.progress(intensity)
-                
-                st.session_state.history.append({
-                    "Ticker": ticker,
-                    "Log Return": log_return,
-                    "RSI": rsi_14,
-                    "MACD": macd,
-                    "Predicted Vol": f"{pred_vol:.4%}"
-                })
+
+                st.session_state.history.append(
+                    {
+                        "Ticker": ticker,
+                        "Log Return": log_return,
+                        "RSI": rsi_14,
+                        "MACD": macd,
+                        "Predicted Vol": f"{pred_vol:.4%}",
+                    }
+                )
             else:
                 st.error(f"API Error: {response.json().get('detail', 'Unknown error')}")
         except Exception as e:

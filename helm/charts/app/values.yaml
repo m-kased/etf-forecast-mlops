@@ -1,12 +1,13 @@
-# -- Application name (defaults to Helm release name)
-name: ""
+# Generic application chart — override per workload (see examples/api.values.yaml, ui.values.yaml).
 
-# -- Target namespace (must exist before install)
+# -- Application identity
+name: ""
 namespace: app
 
 commonLabels: {}
 podAnnotations: {}
 
+# -- Pod security
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -20,26 +21,29 @@ securityContext:
       - ALL
 
 imagePullSecrets: []
-
 replicaCount: 1
 
+# -- Container image
 image:
-  repository: ""  # required
-  tag: ""         # defaults to Chart.appVersion
+  repository: ""  # required — set in CI or -f values overlay
+  tag: ""         # defaults to Chart.appVersion when empty
   pullPolicy: IfNotPresent
 
 containerPort: 8080
 
+# -- Kubernetes Service
 service:
   enabled: true
   type: ClusterIP
   port: ""  # defaults to containerPort
 
+# -- Service account (IRSA annotations set in workload-specific values)
 serviceAccount:
   create: true
-  name: ""  # defaults to app name
+  name: ""
   annotations: {}
 
+# -- Runtime configuration
 env: []
 envFrom: []
 
@@ -57,6 +61,7 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# -- Istio ingress (VirtualService)
 istio:
   enabled: false
   gateway:

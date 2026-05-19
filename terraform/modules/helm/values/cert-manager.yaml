@@ -1,3 +1,5 @@
+# cert-manager — TLS certificates for Istio ingress (Let's Encrypt via ClusterIssuer).
+
 replicaCount: 1
 
 resources:

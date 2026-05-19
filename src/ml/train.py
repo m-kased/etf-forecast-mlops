@@ -1,33 +1,46 @@
+import logging
+import math
 import os
 import sys
-import pandas as pd
-import xgboost as xgb
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
-import math
+
+import boto3
 import mlflow
 import mlflow.xgboost
-from mlflow import MlflowClient
-import boto3
+import pandas as pd
+import xgboost as xgb
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
+from mlflow import MlflowClient
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import train_test_split
 
 from common.db import get_active_tickers
 
-# Setup Environment variables
 load_dotenv()
 
-DEFAULT_MINIO_ENDPOINT = "http://localhost:9000"
+logger = logging.getLogger(__name__)
+
 DEFAULT_MLFLOW_TRACKING_URI = "http://localhost:5000"
+MLFLOW_EXPERIMENT = "ETF_Volatility_Prediction"
+
+MLFLOW_URI = (os.getenv("MLFLOW_TRACKING_URI") or DEFAULT_MLFLOW_TRACKING_URI).strip()
+MLFLOW_ARTIFACT_BUCKET = (
+    os.getenv("MLFLOW_S3_ARTIFACT_BUCKET") or "mlflow-artifacts"
+).strip()
+DATA_LAKE_BUCKET = (
+    os.getenv("S3_DATA_BUCKET") or os.getenv("RAW_DATA_BUCKET") or "market-features"
+).strip()
+
+_s3_client = None
+_mlflow_configured = False
 
 
 def require_env_vars(names: tuple[str, ...]) -> None:
     missing = [n for n in names if not (os.getenv(n) or "").strip()]
     if missing:
-        print(
-            "Missing or empty required environment variables: "
-            + ", ".join(missing),
-            file=sys.stderr,
+        logger.error(
+            "Missing or empty required environment variables: %s",
+            ", ".join(missing),
         )
         sys.exit(1)
 
@@ -43,8 +56,12 @@ def _s3_client_kwargs() -> dict:
     ).strip()
     if endpoint:
         kwargs["endpoint_url"] = endpoint
-    access = (os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
-    secret = (os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+    access = (
+        os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or ""
+    ).strip()
+    secret = (
+        os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or ""
+    ).strip()
     if access and secret:
         kwargs["aws_access_key_id"] = access
         kwargs["aws_secret_access_key"] = secret
@@ -55,84 +72,76 @@ def _s3_client_kwargs() -> dict:
     return kwargs
 
 
-MLFLOW_URI = (os.getenv("MLFLOW_TRACKING_URI") or DEFAULT_MLFLOW_TRACKING_URI).strip()
-MLFLOW_ARTIFACT_BUCKET = (os.getenv("MLFLOW_S3_ARTIFACT_BUCKET") or "mlflow-artifacts").strip()
-DATA_LAKE_BUCKET = (
-    os.getenv("S3_DATA_BUCKET") or os.getenv("RAW_DATA_BUCKET") or "market-features"
-).strip()
+def get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client("s3", **_s3_client_kwargs())
+    return _s3_client
 
-print(f"Connecting to MLflow at {MLFLOW_URI}...")
-mlflow.set_tracking_uri(MLFLOW_URI)
-mlflow.set_experiment("ETF_Volatility_Prediction")
 
-print("MLflow connection successful")
-
-s3_client = boto3.client("s3", **_s3_client_kwargs())
+def configure_mlflow() -> None:
+    global _mlflow_configured
+    if _mlflow_configured:
+        return
+    logger.info("Connecting to MLflow at %s", MLFLOW_URI)
+    mlflow.set_tracking_uri(MLFLOW_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+    _mlflow_configured = True
+    logger.info("MLflow tracking URI configured")
 
 
 def ensure_bucket_exists(bucket_name: str) -> None:
     """Create the MinIO bucket if missing (same pattern as ETL for market-features)."""
+    s3 = get_s3_client()
     try:
-        s3_client.head_bucket(Bucket=bucket_name)
+        s3.head_bucket(Bucket=bucket_name)
     except ClientError:
-        s3_client.create_bucket(Bucket=bucket_name)
+        s3.create_bucket(Bucket=bucket_name)
 
 
-def train_model(ticker: str = "SPY") -> None:
+def train_model(ticker: str = "SPY") -> bool:
     ensure_bucket_exists(MLFLOW_ARTIFACT_BUCKET)
     ensure_bucket_exists(DATA_LAKE_BUCKET)
-    print(f"--- Starting Training Pipeline for {ticker} ---")
-    
-    # download data from data lake
+    logger.info("Starting training pipeline for %s", ticker)
+
     local_path = f"/tmp/{ticker}_features.parquet"
-    print(f"Downloading {ticker} data from MinIO...")
-    s3_client.download_file(DATA_LAKE_BUCKET, f"{ticker}_features.parquet", local_path)
-    
-    # load and prep data
+    logger.info("Downloading %s features from %s", ticker, DATA_LAKE_BUCKET)
+    get_s3_client().download_file(
+        DATA_LAKE_BUCKET, f"{ticker}_features.parquet", local_path
+    )
+
     df = pd.read_parquet(local_path)
-    
-    # columns created in ETL
-    features = ['log_return', 'RSI_14', 'MACD_12_26_9'] 
-    
-    # drop missing values before training
-    df = df.dropna(subset=features + ['target_volatility_6h'])
-    
+    features = ["log_return", "RSI_14", "MACD_12_26_9"]
+    df = df.dropna(subset=features + ["target_volatility_6h"])
+
     X = df[features]
-    y = df['target_volatility_6h']
-    
-    # time-series split (no shuffling)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-    
-    # start mlflow experiment run
+    y = df["target_volatility_6h"]
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, shuffle=False
+    )
+
     with mlflow.start_run(run_name=f"{ticker}_XGBoost_Baseline"):
-        print("Training XGBoost Model...")
-        
-        # hyperparameters
+        logger.info("Training XGBoost model for %s", ticker)
+
         params = {
             "n_estimators": 100,
             "learning_rate": 0.1,
             "max_depth": 5,
-            "random_state": 42
+            "random_state": 42,
         }
-        
-        # log parameters so we can compare future versions
         mlflow.log_params(params)
         mlflow.log_param("ticker", ticker)
-        
-        # train the model
+
         model = xgb.XGBRegressor(**params)
         model.fit(X_train, y_train)
-        
-        # predict & evaluate
+
         predictions = model.predict(X_test)
         rmse = math.sqrt(mean_squared_error(y_test, predictions))
-        print(f"Model RMSE: {rmse:.5f}")
-        
-        # log the score and the physical model file to MLflow
+        logger.info("Model RMSE for %s: %.5f", ticker, rmse)
+
         mlflow.log_metric("rmse", rmse)
         mlflow.xgboost.log_model(model, name="xgboost_model")
 
-        # Register in Model Registry and auto-promote champion
         client = MlflowClient()
         registry_name = f"etf-vol-{ticker}"
         run_id = mlflow.active_run().info.run_id
@@ -146,29 +155,47 @@ def train_model(ticker: str = "SPY") -> None:
             champion_rmse = champion_run.data.metrics["rmse"]
             if rmse < champion_rmse:
                 client.set_registered_model_alias(registry_name, "champion", mv.version)
-                print(f"New champion for {ticker}! v{mv.version} (RMSE {rmse:.5f} < {champion_rmse:.5f})")
+                logger.info(
+                    "New champion for %s: v%s (RMSE %.5f < %.5f)",
+                    ticker,
+                    mv.version,
+                    rmse,
+                    champion_rmse,
+                )
                 promoted = True
             else:
-                print(f"Existing champion retained for {ticker} (RMSE {champion_rmse:.5f} <= {rmse:.5f})")
+                logger.info(
+                    "Existing champion retained for %s (RMSE %.5f <= %.5f)",
+                    ticker,
+                    champion_rmse,
+                    rmse,
+                )
         except Exception:
             client.set_registered_model_alias(registry_name, "champion", mv.version)
-            print(f"First model for {ticker} promoted to champion (v{mv.version})")
+            logger.info(
+                "First model for %s promoted to champion (v%s)",
+                ticker,
+                mv.version,
+            )
             promoted = True
 
         return promoted
 
 
 def run_training_pipeline() -> bool:
-    """Trains models for all active ETFs. Returns True if any champion was promoted."""
+    """Train models for all active ETFs. Returns True if any champion was promoted."""
+    configure_mlflow()
     tickers = get_active_tickers()
-    print(f"Training pipeline starting for tickers: {tickers}")
+    logger.info("Training pipeline starting for tickers: %s", tickers)
     any_promoted = False
     for ticker in tickers:
         if train_model(ticker):
             any_promoted = True
-    print(f"Training pipeline completed (new_champion={any_promoted})")
+    logger.info("Training pipeline completed (new_champion=%s)", any_promoted)
     return any_promoted
 
-# for testing
+
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    configure_mlflow()
     train_model("SPY")

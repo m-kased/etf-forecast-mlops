@@ -1,7 +1,8 @@
 # Apache Airflow Helm chart values
-# Chart: https://airflow.apache.org — version pinned in the workflow.
-# DAGs: git-sync (repo/branch set in airflow-deploy workflow). Image: deps + src/ only.
+# Chart: https://airflow.apache.org — version pinned in the deploy workflow.
+# DAGs: git-sync (repo/branch in workflow). Worker image: project deps + src/.
 
+# -- Executor and bundled dependencies (use external RDS + Redis)
 executor: KubernetesExecutor
 
 images:
@@ -14,6 +15,7 @@ postgresql:
 redis:
   enabled: false
 
+# -- DAG delivery
 dags:
   persistence:
     enabled: false
@@ -25,6 +27,7 @@ dags:
     wait: 60
     depth: 1
 
+# -- Airflow core configuration
 config:
   core:
     load_examples: "False"
@@ -38,6 +41,7 @@ migrateDatabaseJob:
 createUserJob:
   useHelmHooks: false
 
+# -- Component sizing
 apiServer:
   replicas: 1
   resources:
@@ -68,6 +72,7 @@ serviceAccount:
   create: true
   name: airflow-worker
 
+# -- Credentials and platform endpoints (secrets created by Terraform)
 extraEnvFrom:
   - secretRef:
       name: airflow-rds-credentials

@@ -1,7 +1,9 @@
+# FastAPI inference service — use with: helm upgrade --install api ./charts/app -f examples/api.values.yaml
+
 namespace: app
 
 image:
-  repository: "" # set in CI, e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/etf-forecast-api
+  repository: ""  # set in CI, e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/etf-forecast-dev-api
   tag: ""
 
 containerPort: 8000

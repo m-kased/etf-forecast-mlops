@@ -1,3 +1,5 @@
+# Istiod control plane — mesh config, pilot autoscaling, sidecar resources.
+
 pilot:
   autoscaleEnabled: true
   autoscaleMin: 1

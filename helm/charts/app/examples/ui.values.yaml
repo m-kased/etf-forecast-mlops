@@ -1,3 +1,5 @@
+# Streamlit UI — use with: helm upgrade --install ui ./charts/app -f examples/ui.values.yaml
+
 namespace: app
 
 image:

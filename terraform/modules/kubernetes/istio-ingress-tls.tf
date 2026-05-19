@@ -1,4 +1,4 @@
-# TLS ingress for UI + API .
+# TLS ingress for UI + API.
 # DNS: point both hostnames at the istio-ingressgateway LoadBalancer.
 
 locals {

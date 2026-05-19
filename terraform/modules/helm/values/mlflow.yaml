@@ -1,3 +1,5 @@
+# MLflow tracking server — Postgres metadata store, S3 artifacts via IRSA.
+
 backendStore:
   postgres:
     enabled: true

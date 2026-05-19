@@ -1,3 +1,5 @@
+# Kiali — Istio service mesh observability UI.
+
 auth:
   strategy: anonymous
 

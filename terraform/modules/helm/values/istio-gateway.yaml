@@ -1,3 +1,5 @@
+# Istio ingress gateway — internet-facing NLB for UI/API TLS termination.
+
 service:
   type: LoadBalancer
   annotations:

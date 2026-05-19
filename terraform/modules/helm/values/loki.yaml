@@ -1,3 +1,5 @@
+# Loki + Promtail — cluster log aggregation (Grafana datasource wired in kube-prometheus).
+
 loki:
   enabled: true
   persistence:

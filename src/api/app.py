@@ -1,14 +1,18 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, field_validator
-import mlflow
+import logging
 import os
+from contextlib import asynccontextmanager
+
+import mlflow
 import pandas as pd
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, field_validator
 
 from common.db import get_active_tickers
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(MLFLOW_URI)
@@ -29,7 +33,9 @@ class PredictionInput(BaseModel):
         upper_value = value.upper()
         valid = get_active_tickers()
         if upper_value not in valid:
-            raise ValueError(f"Invalid ticker '{value}'. Valid tickers are: {', '.join(valid)}")
+            raise ValueError(
+                f"Invalid ticker '{value}'. Valid tickers are: {', '.join(valid)}"
+            )
         return upper_value
 
 
@@ -41,10 +47,14 @@ def load_model_for_ticker(ticker: str) -> bool:
         alias_info = client.get_model_version_by_alias(registry_name, "champion")
         ml_models[ticker] = mlflow.xgboost.load_model(model_uri)
         model_versions[ticker] = alias_info.version
-        print(f"Loaded champion model for {ticker} (version {alias_info.version}) from registry.")
+        logger.info(
+            "Loaded champion model for %s (version %s) from registry",
+            ticker,
+            alias_info.version,
+        )
         return True
-    except Exception as e:
-        print(f"Failed to load champion model for {ticker}: {e}")
+    except Exception as exc:
+        logger.warning("Failed to load champion model for %s: %s", ticker, exc)
         return False
 
 
@@ -65,8 +75,7 @@ def health_check():
     return {
         "status": "healthy",
         "loaded_models": {
-            ticker: f"v{model_versions.get(ticker, '?')}"
-            for ticker in ml_models
+            ticker: f"v{model_versions.get(ticker, '?')}" for ticker in ml_models
         },
     }
 
@@ -85,7 +94,9 @@ def reload_models(ticker: str | None = Query(default=None)):
         model_versions.pop(ticker, None)
         success = load_model_for_ticker(ticker)
         if not success:
-            raise HTTPException(status_code=404, detail=f"No champion model found for {ticker}.")
+            raise HTTPException(
+                status_code=404, detail=f"No champion model found for {ticker}."
+            )
         return {"reloaded": [ticker], "version": model_versions.get(ticker)}
 
     ml_models.clear()

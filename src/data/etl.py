@@ -1,19 +1,22 @@
-import yfinance as yf
-import pandas as pd
-import pandas_ta as ta
-import numpy as np
 import logging
-from pathlib import Path
-import boto3
-from botocore.exceptions import ClientError
 import os
+from pathlib import Path
 
+import boto3
+import numpy as np
+import pandas as pd
+import pandas_ta  # noqa: F401 — registers .ta accessors on DataFrame
+import yfinance as yf
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
+
 from common.db import get_active_tickers
 
 HORIZON_BARS = 6
 DATA_DIR = Path("/tmp/market_data")
-DATA_BUCKET = (os.getenv("S3_DATA_BUCKET") or os.getenv("RAW_DATA_BUCKET") or "market-features").strip()
+DATA_BUCKET = (
+    os.getenv("S3_DATA_BUCKET") or os.getenv("RAW_DATA_BUCKET") or "market-features"
+).strip()
 
 load_dotenv()
 
@@ -32,8 +35,12 @@ def _s3_client_kwargs() -> dict:
     endpoint = _normalize_minio_endpoint(os.getenv("MINIO_ENDPOINT"))
     if endpoint:
         kwargs["endpoint_url"] = endpoint
-    access = (os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
-    secret = (os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+    access = (
+        os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or ""
+    ).strip()
+    secret = (
+        os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or ""
+    ).strip()
     if access and secret:
         kwargs["aws_access_key_id"] = access
         kwargs["aws_secret_access_key"] = secret
@@ -59,6 +66,7 @@ def get_s3_presign_client():
         _s3_presign_client = boto3.client("s3", **kwargs)
     return _s3_presign_client
 
+
 def _normalize_minio_endpoint(raw: str | None) -> str:
     """Botocore requires a full URL; bare host:port from env raises Invalid endpoint."""
     endpoint = (raw or "http://minio:9000").strip()
@@ -66,60 +74,56 @@ def _normalize_minio_endpoint(raw: str | None) -> str:
         endpoint = f"http://{endpoint}"
     return endpoint.rstrip("/")
 
-def ensure_bucket_exists(bucket_name: str):
-    """Creates the MinIO bucket if it doesn't exist yet."""
+
+def ensure_bucket_exists(bucket_name: str) -> None:
+    """Create the MinIO bucket if it does not exist yet."""
     s3 = get_s3_client()
     try:
         s3.head_bucket(Bucket=bucket_name)
     except ClientError:
-        logger.info(f"Bucket '{bucket_name}' not found. Creating it...")
+        logger.info("Bucket %r not found; creating it", bucket_name)
         s3.create_bucket(Bucket=bucket_name)
 
+
 def extract_data(ticker: str, period="1y", interval="1h") -> pd.DataFrame:
-    """Extracts raw OHLCV data from yfinance"""
-    logger.info(f"Downloading raw data for {ticker}...")
+    """Extract raw OHLCV data from yfinance."""
+    logger.info("Downloading raw data for %s", ticker)
     df = yf.download(ticker, period=period, interval=interval, progress=False)
-    
+
     if df.empty:
-        logger.error(f"Failed to fetch data for {ticker}")
+        logger.error("Failed to fetch data for %s", ticker)
         return pd.DataFrame()
-        
-    # clean up column names
-    df.columns = df.columns.droplevel(1) if isinstance(df.columns, pd.MultiIndex) else df.columns
-    # make columns lowercase
+
+    df.columns = (
+        df.columns.droplevel(1) if isinstance(df.columns, pd.MultiIndex) else df.columns
+    )
     df.columns = [c.lower() for c in df.columns]
     return df
 
+
 def transform_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Applies financial math to generate features and target labels"""
-    logger.info("Applying technical indicators and generating labels...")
-    
-    # Base log returns
-    df['log_return'] = np.log(df['close'] / df['close'].shift(1))
-    
-    # Features via pandas_ta
+    """Apply technical indicators and generate the volatility target label."""
+    logger.info("Applying technical indicators and generating labels")
+
+    df["log_return"] = np.log(df["close"] / df["close"].shift(1))
     df.ta.rsi(length=14, append=True)
     df.ta.macd(fast=12, slow=26, signal=9, append=True)
-    
-    # Target Label (Future Volatility)
-    df['target_volatility_6h'] = df['log_return'].shift(-HORIZON_BARS).rolling(window=HORIZON_BARS).std()
-    
-    # drop rows with NaN values
-    clean_df = df.dropna().copy()
-    return clean_df
+    df["target_volatility_6h"] = (
+        df["log_return"].shift(-HORIZON_BARS).rolling(window=HORIZON_BARS).std()
+    )
+    return df.dropna().copy()
+
 
 def load_data(df: pd.DataFrame, ticker: str) -> str:
-    """Save locally, upload to MinIO, return a time-limited presigned GET URL."""
+    """Save locally, upload to object storage, return a presigned GET URL."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     file_name = f"{ticker}_features.parquet"
     local_path = DATA_DIR / file_name
 
-    # Save Locally
     df.to_parquet(local_path)
-    logger.info(f"Saved {len(df)} rows locally to {local_path}")
+    logger.info("Saved %s rows locally to %s", len(df), local_path)
 
-    # Upload to MinIO
-    logger.info(f"Uploading {file_name} to MinIO bucket '{DATA_BUCKET}'...")
+    logger.info("Uploading %s to bucket %r", file_name, DATA_BUCKET)
     get_s3_client().upload_file(str(local_path), DATA_BUCKET, file_name)
     logger.info("Upload successful")
 
@@ -132,10 +136,11 @@ def load_data(df: pd.DataFrame, ticker: str) -> str:
     logger.info("Presigned download URL (expires in %ss)", expires)
     return download_url
 
+
 def run_pipeline() -> dict[str, str]:
-    """Run ETL for all tickers. Returns ticker -> object URL for Airflow XCom."""
+    """Run ETL for all tickers. Returns ticker -> presigned URL for Airflow XCom."""
     tickers = get_active_tickers()
-    logger.info("Starting ETL Pipeline for tickers: %s", tickers)
+    logger.info("Starting ETL pipeline for tickers: %s", tickers)
     ensure_bucket_exists(DATA_BUCKET)
 
     uploaded: dict[str, str] = {}
@@ -146,9 +151,8 @@ def run_pipeline() -> dict[str, str]:
         clean_df = transform_data(df)
         uploaded[ticker] = load_data(clean_df, ticker)
 
-    logger.info("ETL Pipeline Complete")
     logger.info(
-        "Data under %s; MinIO bucket %r; URLs: %s",
+        "ETL pipeline complete — data under %s, bucket %r, URLs: %s",
         DATA_DIR,
         DATA_BUCKET,
         uploaded,
@@ -157,4 +161,5 @@ def run_pipeline() -> dict[str, str]:
 
 
 if __name__ == "__main__":
-    print(run_pipeline())
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Pipeline result: %s", run_pipeline())
