@@ -1,0 +1,67 @@
+# -- Application name (defaults to Helm release name)
+name: ""
+
+# -- Target namespace (must exist before install)
+namespace: app
+
+commonLabels: {}
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+imagePullSecrets: []
+
+replicaCount: 1
+
+image:
+  repository: ""  # required
+  tag: ""         # defaults to Chart.appVersion
+  pullPolicy: IfNotPresent
+
+containerPort: 8080
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: ""  # defaults to containerPort
+
+serviceAccount:
+  create: true
+  name: ""  # defaults to app name
+  annotations: {}
+
+env: []
+envFrom: []
+
+resources: {}
+#  requests:
+#    cpu: 100m
+#    memory: 256Mi
+#  limits:
+#    memory: 512Mi
+
+livenessProbe: {}
+readinessProbe: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+istio:
+  enabled: false
+  gateway:
+    name: istio-ingressgateway
+    namespace: istio-system
+  hosts: []
+  prefix: /
+  rewrite: ""

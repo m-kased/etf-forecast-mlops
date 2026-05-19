@@ -1,0 +1,19 @@
+{{ include "app.name" . }} deployed.
+
+  Release:   {{ .Release.Name }}
+  Namespace: {{ include "app.namespace" . }}
+  Image:     {{ include "app.image" . }}
+
+{{- if .Values.service.enabled }}
+
+  Service:   {{ include "app.fullname" . }}:{{ include "app.servicePort" . }}
+  In-cluster: http://{{ include "app.fullname" . }}.{{ include "app.namespace" . }}.svc.cluster.local:{{ include "app.servicePort" . }}
+
+  Port-forward:
+    kubectl port-forward -n {{ include "app.namespace" . }} svc/{{ include "app.fullname" . }} {{ .Values.containerPort }}:{{ include "app.servicePort" . }}
+{{- end }}
+
+{{- if .Values.istio.enabled }}
+
+  Istio VirtualService enabled for hosts: {{ .Values.istio.hosts | join ", " }}
+{{- end }}
