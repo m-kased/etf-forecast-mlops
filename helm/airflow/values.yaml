@@ -1,0 +1,89 @@
+# Apache Airflow Helm chart values
+# Chart: https://airflow.apache.org — version pinned in the workflow.
+# DAGs: git-sync (repo/branch set in airflow-deploy workflow). Image: deps + src/ only.
+
+executor: KubernetesExecutor
+
+images:
+  airflow:
+    pullPolicy: IfNotPresent
+
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: true
+    repo: https://github.com/m-kased/etf-forecast-mlops.git
+    branch: main
+    subPath: dags
+    wait: 60
+    depth: 1
+
+config:
+  core:
+    load_examples: "False"
+    dags_are_paused_at_creation: "True"
+  scheduler:
+    enable_health_check: "True"
+
+migrateDatabaseJob:
+  useHelmHooks: true
+
+createUserJob:
+  useHelmHooks: false
+
+apiServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+workers:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+serviceAccount:
+  create: true
+  name: airflow-worker
+
+extraEnvFrom:
+  - secretRef:
+      name: airflow-rds-credentials
+  - secretRef:
+      name: airflow-app-credentials
+  - secretRef:
+      name: airflow-runtime-secrets
+  - configMapRef:
+      name: airflow-platform-config
+
+env:
+  - name: AIRFLOW__CORE__EXECUTOR
+    value: KubernetesExecutor
+  - name: AIRFLOW__CORE__EXECUTION_API_SERVER_URL
+    value: http://airflow-api-server.airflow.svc.cluster.local:8080/execution/
+  - name: MLFLOW_TRACKING_URI
+    value: http://mlflow.mlflow.svc.cluster.local:5000
+  - name: API_BASE_URL
+    value: http://api.app.svc.cluster.local:8000

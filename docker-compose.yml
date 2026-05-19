@@ -132,7 +132,7 @@ services:
   airflow-init:
     build:
       context: .
-      dockerfile: docker/airflow/Dockerfile
+      dockerfile: docker/airflow/Dockerfile.local
     container_name: ml-airflow-init
     volumes:
       - ./src:/opt/airflow/src
@@ -159,7 +159,7 @@ services:
   airflow:
     build:
       context: .
-      dockerfile: docker/airflow/Dockerfile
+      dockerfile: docker/airflow/Dockerfile.local
     environment:
       <<: *airflow-common
     ports:

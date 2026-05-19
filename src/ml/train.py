@@ -20,13 +20,6 @@ load_dotenv()
 DEFAULT_MINIO_ENDPOINT = "http://localhost:9000"
 DEFAULT_MLFLOW_TRACKING_URI = "http://localhost:5000"
 
-REQUIRED_ENV = (
-    "MINIO_ACCESS_KEY",
-    "MINIO_SECRET_KEY",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "MLFLOW_S3_ENDPOINT_URL",
-)
 
 def require_env_vars(names: tuple[str, ...]) -> None:
     missing = [n for n in names if not (os.getenv(n) or "").strip()]
@@ -39,30 +32,42 @@ def require_env_vars(names: tuple[str, ...]) -> None:
         sys.exit(1)
 
 
-require_env_vars(REQUIRED_ENV)
+def _s3_client_kwargs() -> dict:
+    """MinIO when an endpoint is set; otherwise AWS S3 via IRSA/default credential chain."""
+    kwargs: dict = {}
+    region = (os.getenv("AWS_DEFAULT_REGION") or "").strip()
+    if region:
+        kwargs["region_name"] = region
+    endpoint = (
+        os.getenv("MINIO_ENDPOINT") or os.getenv("MLFLOW_S3_ENDPOINT_URL") or ""
+    ).strip()
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
+    access = (os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
+    secret = (os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+    if access and secret:
+        kwargs["aws_access_key_id"] = access
+        kwargs["aws_secret_access_key"] = secret
+    elif endpoint:
+        require_env_vars(("MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"))
+        kwargs["aws_access_key_id"] = os.environ["MINIO_ACCESS_KEY"].strip()
+        kwargs["aws_secret_access_key"] = os.environ["MINIO_SECRET_KEY"].strip()
+    return kwargs
 
-MINIO_ENDPOINT = (os.getenv("MINIO_ENDPOINT") or DEFAULT_MINIO_ENDPOINT).strip()
-MINIO_ACCESS = os.environ["MINIO_ACCESS_KEY"].strip()
-MINIO_SECRET = os.environ["MINIO_SECRET_KEY"].strip()
+
 MLFLOW_URI = (os.getenv("MLFLOW_TRACKING_URI") or DEFAULT_MLFLOW_TRACKING_URI).strip()
-# Must match MLflow server `--default-artifact-root` (e.g. docker-compose: s3://mlflow-artifacts/)
 MLFLOW_ARTIFACT_BUCKET = (os.getenv("MLFLOW_S3_ARTIFACT_BUCKET") or "mlflow-artifacts").strip()
-DATA_LAKE_BUCKET = "market-features"
+DATA_LAKE_BUCKET = (
+    os.getenv("S3_DATA_BUCKET") or os.getenv("RAW_DATA_BUCKET") or "market-features"
+).strip()
 
-# Configure MLflow
 print(f"Connecting to MLflow at {MLFLOW_URI}...")
 mlflow.set_tracking_uri(MLFLOW_URI)
-mlflow.set_experiment("ETF_Volatility_Prediction") 
+mlflow.set_experiment("ETF_Volatility_Prediction")
 
 print("MLflow connection successful")
 
-# Configure MinIO Client
-s3_client = boto3.client(
-    "s3",
-    endpoint_url=MINIO_ENDPOINT,
-    aws_access_key_id=MINIO_ACCESS,
-    aws_secret_access_key=MINIO_SECRET,
-)
+s3_client = boto3.client("s3", **_s3_client_kwargs())
 
 
 def ensure_bucket_exists(bucket_name: str) -> None:

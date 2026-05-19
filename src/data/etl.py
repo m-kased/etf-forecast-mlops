@@ -13,7 +13,7 @@ from common.db import get_active_tickers
 
 HORIZON_BARS = 6
 DATA_DIR = Path("/tmp/market_data")
-MINIO_BUCKET = "market-features"
+DATA_BUCKET = (os.getenv("S3_DATA_BUCKET") or os.getenv("RAW_DATA_BUCKET") or "market-features").strip()
 
 load_dotenv()
 
@@ -23,16 +23,28 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def _s3_client_kwargs() -> dict:
+    """Build boto3 S3 kwargs for MinIO (local) or AWS S3 with IRSA (EKS)."""
+    kwargs: dict = {}
+    region = (os.getenv("AWS_DEFAULT_REGION") or "").strip()
+    if region:
+        kwargs["region_name"] = region
+    endpoint = _normalize_minio_endpoint(os.getenv("MINIO_ENDPOINT"))
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
+    access = (os.getenv("MINIO_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
+    secret = (os.getenv("MINIO_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY") or "").strip()
+    if access and secret:
+        kwargs["aws_access_key_id"] = access
+        kwargs["aws_secret_access_key"] = secret
+    return kwargs
+
+
 def get_s3_client():
-    """S3 client for uploads (uses MINIO_ENDPOINT — reachable from this process)."""
+    """S3 client for uploads (MinIO locally, AWS S3 + IRSA on EKS)."""
     global _s3_client
     if _s3_client is None:
-        _s3_client = boto3.client(
-            "s3",
-            endpoint_url=_normalize_minio_endpoint(os.getenv("MINIO_ENDPOINT")),
-            aws_access_key_id=os.getenv("MINIO_ACCESS_KEY"),
-            aws_secret_access_key=os.getenv("MINIO_SECRET_KEY"),
-        )
+        _s3_client = boto3.client("s3", **_s3_client_kwargs())
     return _s3_client
 
 
@@ -40,13 +52,11 @@ def get_s3_presign_client():
     """Client used only to sign GET URLs. Use MINIO_PUBLIC_URL so links work outside Docker."""
     global _s3_presign_client
     if _s3_presign_client is None:
+        kwargs = _s3_client_kwargs()
         public = os.getenv("MINIO_PUBLIC_URL") or os.getenv("MINIO_ENDPOINT")
-        _s3_presign_client = boto3.client(
-            "s3",
-            endpoint_url=_normalize_minio_endpoint(public),
-            aws_access_key_id=os.getenv("MINIO_ACCESS_KEY"),
-            aws_secret_access_key=os.getenv("MINIO_SECRET_KEY"),
-        )
+        if public:
+            kwargs["endpoint_url"] = _normalize_minio_endpoint(public)
+        _s3_presign_client = boto3.client("s3", **kwargs)
     return _s3_presign_client
 
 def _normalize_minio_endpoint(raw: str | None) -> str:
@@ -109,14 +119,14 @@ def load_data(df: pd.DataFrame, ticker: str) -> str:
     logger.info(f"Saved {len(df)} rows locally to {local_path}")
 
     # Upload to MinIO
-    logger.info(f"Uploading {file_name} to MinIO bucket '{MINIO_BUCKET}'...")
-    get_s3_client().upload_file(str(local_path), MINIO_BUCKET, file_name)
+    logger.info(f"Uploading {file_name} to MinIO bucket '{DATA_BUCKET}'...")
+    get_s3_client().upload_file(str(local_path), DATA_BUCKET, file_name)
     logger.info("Upload successful")
 
     expires = int(os.getenv("MINIO_PRESIGNED_EXPIRES", "86400"))
     download_url = get_s3_presign_client().generate_presigned_url(
         "get_object",
-        Params={"Bucket": MINIO_BUCKET, "Key": file_name},
+        Params={"Bucket": DATA_BUCKET, "Key": file_name},
         ExpiresIn=expires,
     )
     logger.info("Presigned download URL (expires in %ss)", expires)
@@ -126,7 +136,7 @@ def run_pipeline() -> dict[str, str]:
     """Run ETL for all tickers. Returns ticker -> object URL for Airflow XCom."""
     tickers = get_active_tickers()
     logger.info("Starting ETL Pipeline for tickers: %s", tickers)
-    ensure_bucket_exists(MINIO_BUCKET)
+    ensure_bucket_exists(DATA_BUCKET)
 
     uploaded: dict[str, str] = {}
     for ticker in tickers:
@@ -140,7 +150,7 @@ def run_pipeline() -> dict[str, str]:
     logger.info(
         "Data under %s; MinIO bucket %r; URLs: %s",
         DATA_DIR,
-        MINIO_BUCKET,
+        DATA_BUCKET,
         uploaded,
     )
     return uploaded

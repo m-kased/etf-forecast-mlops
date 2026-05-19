@@ -49,6 +49,36 @@ variable "rds_db_name" {
   default     = "ml_data"
 }
 
+variable "region" {
+  description = "AWS region (injected into Airflow platform ConfigMap)"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "redis_endpoint" {
+  description = "ElastiCache Redis endpoint for Airflow workloads"
+  type        = string
+  default     = ""
+}
+
+variable "redis_port" {
+  description = "ElastiCache Redis port"
+  type        = number
+  default     = 6379
+}
+
+variable "mlflow_artifacts_bucket" {
+  description = "S3 bucket for MLflow artifacts"
+  type        = string
+  default     = ""
+}
+
+variable "raw_data_bucket" {
+  description = "S3 bucket for market feature data"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Additional tags applied via labels where supported"
   type        = map(string)

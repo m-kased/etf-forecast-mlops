@@ -1,31 +1,37 @@
+# Production Airflow image — Python deps and src/ only; DAGs are synced via git-sync.
+# syntax=docker/dockerfile:1
+
 FROM apache/airflow:3.0.2-python3.12
+
+LABEL org.opencontainers.image.title="etf-forecast-airflow" \
+      org.opencontainers.image.description="Airflow 3 runtime with project dependencies and src (DAGs via git-sync)"
 
 USER root
 
-# Install uv binary
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
 
 USER airflow
 
-ENV UV_CACHE_DIR=/home/airflow/cache/uv
+ENV UV_CACHE_DIR=/tmp/uv-cache \
+    PYTHONPATH=/opt/airflow:/opt/airflow/dags \
+    AIRFLOW_HOME=/opt/airflow \
+    AIRFLOW__CORE__LOAD_EXAMPLES=false \
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
 
-# Copy pyproject.toml into the image
-COPY --chown=airflow:root pyproject.toml /opt/airflow/pyproject.toml
-COPY --chown=airflow:root uv.lock /opt/airflow/uv.lock
+WORKDIR /opt/airflow
 
-#Install dependencies
-RUN --mount=type=cache,id=uv-cache,target=${UV_CACHE_DIR},uid=50000 \
-    uv pip install -r /opt/airflow/pyproject.toml --extra airflow
+COPY --chown=airflow:root pyproject.toml uv.lock ./
 
-# 3. Copy DAGs and supporting modules
-COPY --chown=airflow:root dags/ /opt/airflow/dags/
-COPY --chown=airflow:root src/ /opt/airflow/src/
+RUN uv pip install --system -r pyproject.toml --extra airflow
 
-# Set Python path to include src
-ENV PYTHONPATH="/opt/airflow:/opt/airflow/dags"
+COPY --chown=airflow:root src/ ./src/
 
-# Create directories for logs and plugins
-RUN mkdir -p /opt/airflow/logs /opt/airflow/plugins
+RUN mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins \
+    && airflow version
 
-# Set working directory
 WORKDIR /opt/airflow

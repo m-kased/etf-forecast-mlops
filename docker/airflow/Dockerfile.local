@@ -1,0 +1,26 @@
+# Local development — deps + src in image; dags/ mounted by docker-compose.
+
+FROM apache/airflow:3.0.2-python3.12
+
+USER root
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+USER airflow
+
+ENV UV_CACHE_DIR=/home/airflow/cache/uv \
+    PYTHONPATH=/opt/airflow:/opt/airflow/dags \
+    AIRFLOW_HOME=/opt/airflow
+
+WORKDIR /opt/airflow
+
+COPY --chown=airflow:root pyproject.toml uv.lock ./
+
+RUN --mount=type=cache,id=uv-cache,target=${UV_CACHE_DIR},uid=50000 \
+    uv pip install --system -r pyproject.toml --extra airflow
+
+COPY --chown=airflow:root src/ ./src/
+
+RUN mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins
+
+WORKDIR /opt/airflow

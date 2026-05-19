@@ -22,10 +22,9 @@ AWS infrastructure for the ETF Forecast MLOps platform, provisioned with Terrafo
 | kube-prometheus-stack | monitoring | Prometheus + Grafana |
 | loki-stack | monitoring | Log aggregation (Promtail → Loki → Grafana) |
 | kiali | istio-system | Istio observability dashboard |
-| airflow | airflow | Pipeline orchestration (KubernetesExecutor) |
 | mlflow | mlflow | Model registry + experiment tracking |
 
-> **Note:** Application images (API + UI) are built and deployed via the `app-deploy` GitHub Actions workflow. ECR repositories are provisioned by Terraform.
+> **Note:** Application images (API, UI, Airflow) are built and deployed via GitHub Actions (`app-deploy`, `airflow-deploy`). The Airflow image contains dependencies and `src/`; DAGs are synced from git (git-sync). ECR and the `airflow` namespace/secrets/IRSA are provisioned by Terraform; the Airflow Helm release is not.
 
 ### ECR repositories
 
@@ -35,8 +34,9 @@ Per environment, Terraform creates:
 |------------|-------------------|
 | API | `etf-forecast-dev-api` |
 | UI | `etf-forecast-dev-ui` |
+| Airflow | `etf-forecast-dev-airflow` |
 
-Outputs: `ecr_api_repository_url`, `ecr_ui_repository_url`, `api_irsa_role_arn`
+Outputs: `ecr_api_repository_url`, `ecr_ui_repository_url`, `ecr_airflow_repository_url`, `api_irsa_role_arn`, `airflow_irsa_role_arn`
 
 ## Directory Structure
 
@@ -53,7 +53,7 @@ terraform/
     ├── elasticache/    # ElastiCache Redis
     ├── s3/             # S3 buckets
     ├── iam/            # IAM roles (EKS + IRSA)
-    ├── ecr/            # ECR repositories for API and UI images
+    ├── ecr/            # ECR repositories for API, UI, and Airflow images
     ├── kubernetes/     # Namespaces and Kubernetes secrets
     └── helm/           # Helm chart releases (platform components)
 ```

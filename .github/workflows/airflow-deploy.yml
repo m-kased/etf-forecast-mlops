@@ -1,0 +1,174 @@
+name: Build and Deploy Airflow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/data/**"
+      - "src/ml/**"
+      - "src/common/**"
+      - "docker/airflow/**"
+      - "helm/airflow/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/airflow-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: airflow-deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.cfg.outputs.environment }}
+    steps:
+      - name: Set environment
+        id: cfg
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ inputs.environment }}"
+          else
+            ENV="dev"
+          fi
+          echo "environment=$ENV" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build & push Airflow image
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    outputs:
+      repository: ${{ steps.image.outputs.repository }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image variables
+        id: image
+        run: |
+          PROJECT="${{ vars.TF_VAR_PROJECT_NAME }}"
+          ENV="${{ needs.resolve.outputs.environment }}"
+          REPO_NAME="${PROJECT}-${ENV}-airflow"
+          REGISTRY="${{ steps.ecr-login.outputs.registry }}"
+          IMAGE_TAG="${GITHUB_SHA::7}"
+
+          echo "repository=${REGISTRY}/${REPO_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/airflow/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.repository }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.repository }}:latest
+          cache-from: type=gha,scope=airflow
+          cache-to: type=gha,mode=max,scope=airflow
+
+  deploy:
+    name: Deploy Airflow
+    needs: [resolve, build-push]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Load RDS credentials
+        id: rds
+        env:
+          RDS_SECRET_ARN: ${{ vars.RDS_SECRET_ARN }}
+        run: |
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id "${RDS_SECRET_ARN}" \
+            --query SecretString \
+            --output text)AIRFLOW_GIT_REPO
+          echo "username=$(echo "${SECRET_JSON}" | jq -r .username)" >> "$GITHUB_OUTPUT"
+          echo "password=$(echo "${SECRET_JSON}" | jq -r .password)" >> "$GITHUB_OUTPUT"
+          echo "host=$(echo "${SECRET_JSON}" | jq -r .host)" >> "$GITHUB_OUTPUT"
+          echo "port=$(echo "${SECRET_JSON}" | jq -r .port)" >> "$GITHUB_OUTPUT"
+
+      - name: Update kubeconfig
+        env:
+          CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || format('{0}-{1}-eks', vars.TF_VAR_PROJECT_NAME, needs.resolve.outputs.environment) }}
+        run: |
+          aws eks update-kubeconfig \
+            --name "${CLUSTER_NAME}" \
+            --region "${{ vars.AWS_REGION }}"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.3"
+
+      - name: Add Airflow Helm repo
+        run: helm repo add apache-airflow https://airflow.apache.org --force-update
+
+      - name: Deploy Airflow
+        env:
+          AIRFLOW_DB_PASSWORD: ${{ steps.rds.outputs.password }}
+          AIRFLOW_GIT_REPO: ${{ vars.AIRFLOW_GIT_REPO }}
+          AIRFLOW_GIT_BRANCH: ${{ vars.AIRFLOW_GIT_BRANCH }}
+        run: |
+          GIT_REPO="${AIRFLOW_GIT_REPO:-https://github.com/${{ github.repository }}.git}"
+          GIT_BRANCH="${AIRFLOW_GIT_BRANCH:-main}"
+
+          helm repo update
+
+          helm upgrade --install airflow apache-airflow/airflow \
+            --version 1.16.0 \
+            --namespace airflow \
+            --create-namespace=false \
+            --values ./helm/airflow/values.yaml \
+            --set images.airflow.repository="${{ needs.build-push.outputs.repository }}" \
+            --set images.airflow.tag="${{ needs.build-push.outputs.tag }}" \
+            --set data.metadataConnection.user="${{ steps.rds.outputs.username }}" \
+            --set data.metadataConnection.pass="${AIRFLOW_DB_PASSWORD}" \
+            --set data.metadataConnection.host="${{ steps.rds.outputs.host }}" \
+            --set data.metadataConnection.port="${{ steps.rds.outputs.port }}" \
+            --set data.metadataConnection.db=airflow \
+            --set data.metadataConnection.protocol=postgresql \
+            --set-string serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ vars.AIRFLOW_IRSA_ROLE_ARN }}" \
+            --set dags.gitSync.enabled=true \
+            --set dags.gitSync.repo="${GIT_REPO}" \
+            --set dags.gitSync.branch="${GIT_BRANCH}" \
+            --set dags.gitSync.subPath=dags \
+            --set dags.gitSync.wait=60 \
+            --wait \
+            --timeout 15m
