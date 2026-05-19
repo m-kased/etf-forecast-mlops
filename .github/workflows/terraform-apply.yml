@@ -1,0 +1,89 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      targets:
+        description: "Comma-separated list of resources to target (e.g. module.eks,module.rds). Leave empty to apply all."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply:
+    name: Apply (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', inputs.environment)) || fromJson('["dev"]') }}
+    environment: ${{ matrix.environment }}
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ matrix.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Build target flags
+        id: targets
+        run: |
+          TARGETS="${{ github.event_name == 'workflow_dispatch' && inputs.targets || '' }}"
+          FLAGS=""
+          if [ -n "$TARGETS" ]; then
+            IFS=',' read -ra ITEMS <<< "$TARGETS"
+            for item in "${ITEMS[@]}"; do
+              trimmed=$(echo "$item" | xargs)
+              FLAGS="$FLAGS -target=$trimmed"
+            done
+          fi
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false -out=tfplan ${{ steps.targets.outputs.flags }}
+        env:
+          TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
+          TF_VAR_environment: ${{ matrix.environment }}
+          TF_VAR_region: ${{ vars.AWS_REGION }}
+          TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_airflow_git_repo: ${{ vars.TF_VAR_AIRFLOW_GIT_REPO }}
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
+          TF_VAR_environment: ${{ matrix.environment }}
+          TF_VAR_region: ${{ vars.AWS_REGION }}
+          TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_airflow_git_repo: ${{ vars.TF_VAR_AIRFLOW_GIT_REPO }}

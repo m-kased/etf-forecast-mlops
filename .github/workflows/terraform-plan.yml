@@ -1,0 +1,180 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to plan"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      targets:
+        description: "Comma-separated list of resources to target (e.g. module.eks,module.rds). Leave empty to plan all."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  detect-environments:
+    name: Detect changed environments
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.detect.outputs.environments }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect environments from changes
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environments=[\"${{ inputs.environment }}\"]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ENVS="[]"
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- terraform/ 2>/dev/null || echo "terraform/")
+
+          DEV_CHANGED=$(echo "$CHANGED" | grep -c "terraform/modules/\|terraform/environments/dev/" || true)
+          PROD_CHANGED=$(echo "$CHANGED" | grep -c "terraform/modules/\|terraform/environments/prod/" || true)
+
+          if [ "$DEV_CHANGED" -gt 0 ] && [ "$PROD_CHANGED" -gt 0 ]; then
+            ENVS='["dev","prod"]'
+          elif [ "$DEV_CHANGED" -gt 0 ]; then
+            ENVS='["dev"]'
+          elif [ "$PROD_CHANGED" -gt 0 ]; then
+            ENVS='["prod"]'
+          else
+            ENVS='["dev"]'
+          fi
+
+          echo "environments=$ENVS" >> "$GITHUB_OUTPUT"
+
+  plan:
+    name: Plan (${{ matrix.environment }})
+    needs: detect-environments
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.detect-environments.outputs.environments) }}
+    environment: ${{ matrix.environment }}
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ matrix.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive ../../
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Build target flags
+        id: targets
+        run: |
+          TARGETS="${{ github.event_name == 'workflow_dispatch' && inputs.targets || '' }}"
+          FLAGS=""
+          if [ -n "$TARGETS" ]; then
+            IFS=',' read -ra ITEMS <<< "$TARGETS"
+            for item in "${ITEMS[@]}"; do
+              trimmed=$(echo "$item" | xargs)
+              FLAGS="$FLAGS -target=$trimmed"
+            done
+          fi
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false -out=tfplan ${{ steps.targets.outputs.flags }}
+        env:
+          TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
+          TF_VAR_environment: ${{ matrix.environment }}
+          TF_VAR_region: ${{ vars.AWS_REGION }}
+          TF_VAR_availability_zones: ${{ vars.TF_VAR_AVAILABILITY_ZONES }}
+          TF_VAR_airflow_git_repo: ${{ vars.TF_VAR_AIRFLOW_GIT_REPO }}
+        continue-on-error: true
+
+      - name: Post plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const maxLength = 65000;
+            let planOutput = `${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}`;
+
+            let truncated = false;
+            if (planOutput.length > maxLength) {
+              truncated = true;
+              planOutput = planOutput.substring(0, maxLength);
+            }
+
+            const truncationNote = truncated
+              ? '\n\n**⚠ Plan output was truncated. See the full plan in the workflow run logs.**\n'
+              : '';
+
+            const body = `### Terraform Plan — \`${{ matrix.environment }}\`
+
+            | Step | Status |
+            |------|--------|
+            | Format | \`${{ steps.fmt.outcome }}\` |
+            | Init | \`${{ steps.init.outcome }}\` |
+            | Validate | \`${{ steps.validate.outcome }}\` |
+            | Plan | \`${{ steps.plan.outcome }}\` |
+
+            <details><summary>Plan Output</summary>
+
+            \`\`\`
+            ${planOutput}
+            \`\`\`
+            ${truncationNote}
+            </details>
+
+            *Triggered by @${{ github.actor }} on \`${{ github.event.pull_request.head.ref }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Plan status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.environment }}
+          path: terraform/environments/${{ matrix.environment }}/tfplan
+          retention-days: 5
