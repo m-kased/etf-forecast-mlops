@@ -8,6 +8,11 @@ image:
 
 containerPort: 8000
 
+metrics:
+  enabled: true
+  path: /metrics
+  interval: 30s
+
 service:
   port: 8000
 

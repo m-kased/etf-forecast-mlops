@@ -11,6 +11,16 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 from common.db import get_active_tickers
+from common.metrics import (
+    ETL_DURATION_SECONDS,
+    ETL_LAST_TICKER_COUNT,
+    ETL_ROWS_TOTAL,
+    ETL_RUNS_TOTAL,
+    ETL_TICKERS_PROCESSED,
+    airflow_grouping_key,
+    observe_duration,
+    push_metrics,
+)
 
 HORIZON_BARS = 6
 DATA_DIR = Path("/tmp/market_data")
@@ -139,25 +149,36 @@ def load_data(df: pd.DataFrame, ticker: str) -> str:
 
 def run_pipeline() -> dict[str, str]:
     """Run ETL for all tickers. Returns ticker -> presigned URL for Airflow XCom."""
-    tickers = get_active_tickers()
-    logger.info("Starting ETL pipeline for tickers: %s", tickers)
-    ensure_bucket_exists(DATA_BUCKET)
+    with observe_duration(ETL_DURATION_SECONDS):
+        tickers = get_active_tickers()
+        logger.info("Starting ETL pipeline for tickers: %s", tickers)
+        ensure_bucket_exists(DATA_BUCKET)
 
-    uploaded: dict[str, str] = {}
-    for ticker in tickers:
-        df = extract_data(ticker)
-        if df.empty:
-            continue
-        clean_df = transform_data(df)
-        uploaded[ticker] = load_data(clean_df, ticker)
+        uploaded: dict[str, str] = {}
+        try:
+            for ticker in tickers:
+                df = extract_data(ticker)
+                if df.empty:
+                    continue
+                clean_df = transform_data(df)
+                uploaded[ticker] = load_data(clean_df, ticker)
+                ETL_TICKERS_PROCESSED.labels(ticker=ticker).inc()
+                ETL_ROWS_TOTAL.labels(ticker=ticker).inc(len(clean_df))
 
-    logger.info(
-        "ETL pipeline complete — data under %s, bucket %r, URLs: %s",
-        DATA_DIR,
-        DATA_BUCKET,
-        uploaded,
-    )
-    return uploaded
+            ETL_LAST_TICKER_COUNT.set(len(uploaded))
+            ETL_RUNS_TOTAL.labels(status="success").inc()
+            logger.info(
+                "ETL pipeline complete — data under %s, bucket %r, URLs: %s",
+                DATA_DIR,
+                DATA_BUCKET,
+                uploaded,
+            )
+            return uploaded
+        except Exception:
+            ETL_RUNS_TOTAL.labels(status="error").inc()
+            raise
+        finally:
+            push_metrics("etf-etl", grouping_key=airflow_grouping_key())
 
 
 if __name__ == "__main__":

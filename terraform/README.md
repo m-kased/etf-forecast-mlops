@@ -23,6 +23,9 @@ AWS infrastructure for the ETF Forecast MLOps platform, provisioned with Terrafo
 | loki-stack | monitoring | Log aggregation (Promtail → Loki → Grafana) |
 | kiali | istio-system | Istio observability dashboard |
 | mlflow | mlflow | Model registry + experiment tracking |
+| prometheus-pushgateway | monitoring | Batch metrics from Airflow ETL/training |
+
+Grafana dashboards for API, ETL, training, and platform overview are provisioned from `monitoring/grafana-dashboards/` (see [monitoring/README.md](../monitoring/README.md)).
 
 > **Note:** Application images (API, UI, Airflow) are built and deployed via GitHub Actions (`app-deploy`, `airflow-deploy`). The Airflow image contains dependencies and `src/`; DAGs are synced from git (git-sync). ECR and the `airflow` namespace/secrets/IRSA are provisioned by Terraform; the Airflow Helm release is not.
 

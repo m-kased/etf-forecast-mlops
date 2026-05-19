@@ -18,6 +18,12 @@ prometheus:
               storage: 100Gi
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
+    additionalScrapeConfigs:
+      - job_name: pushgateway
+        honor_labels: true
+        static_configs:
+          - targets:
+              - prometheus-pushgateway.monitoring.svc.cluster.local:9091
 
 grafana:
   enabled: true

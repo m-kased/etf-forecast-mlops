@@ -54,10 +54,11 @@ resource "kubernetes_config_map" "airflow_platform" {
   }
 
   data = {
-    AWS_DEFAULT_REGION        = var.region
-    REDIS_HOST                = var.redis_endpoint
-    REDIS_PORT                = tostring(var.redis_port)
-    MLFLOW_S3_ARTIFACT_BUCKET = var.mlflow_artifacts_bucket
-    S3_DATA_BUCKET            = var.raw_data_bucket
+    AWS_DEFAULT_REGION         = var.region
+    REDIS_HOST                 = var.redis_endpoint
+    REDIS_PORT                 = tostring(var.redis_port)
+    MLFLOW_S3_ARTIFACT_BUCKET  = var.mlflow_artifacts_bucket
+    S3_DATA_BUCKET             = var.raw_data_bucket
+    PROMETHEUS_PUSHGATEWAY_URL = "http://prometheus-pushgateway.monitoring.svc.cluster.local:9091"
   }
 }

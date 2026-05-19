@@ -15,6 +15,15 @@ from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 
 from common.db import get_active_tickers
+from common.metrics import (
+    CHAMPION_PROMOTIONS_TOTAL,
+    TRAINING_DURATION_SECONDS,
+    TRAINING_RMSE,
+    TRAINING_RUNS_TOTAL,
+    airflow_grouping_key,
+    observe_duration,
+    push_metrics,
+)
 
 load_dotenv()
 
@@ -100,86 +109,101 @@ def ensure_bucket_exists(bucket_name: str) -> None:
 
 
 def train_model(ticker: str = "SPY") -> bool:
-    ensure_bucket_exists(MLFLOW_ARTIFACT_BUCKET)
-    ensure_bucket_exists(DATA_LAKE_BUCKET)
-    logger.info("Starting training pipeline for %s", ticker)
-
-    local_path = f"/tmp/{ticker}_features.parquet"
-    logger.info("Downloading %s features from %s", ticker, DATA_LAKE_BUCKET)
-    get_s3_client().download_file(
-        DATA_LAKE_BUCKET, f"{ticker}_features.parquet", local_path
-    )
-
-    df = pd.read_parquet(local_path)
-    features = ["log_return", "RSI_14", "MACD_12_26_9"]
-    df = df.dropna(subset=features + ["target_volatility_6h"])
-
-    X = df[features]
-    y = df["target_volatility_6h"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, shuffle=False
-    )
-
-    with mlflow.start_run(run_name=f"{ticker}_XGBoost_Baseline"):
-        logger.info("Training XGBoost model for %s", ticker)
-
-        params = {
-            "n_estimators": 100,
-            "learning_rate": 0.1,
-            "max_depth": 5,
-            "random_state": 42,
-        }
-        mlflow.log_params(params)
-        mlflow.log_param("ticker", ticker)
-
-        model = xgb.XGBRegressor(**params)
-        model.fit(X_train, y_train)
-
-        predictions = model.predict(X_test)
-        rmse = math.sqrt(mean_squared_error(y_test, predictions))
-        logger.info("Model RMSE for %s: %.5f", ticker, rmse)
-
-        mlflow.log_metric("rmse", rmse)
-        mlflow.xgboost.log_model(model, name="xgboost_model")
-
-        client = MlflowClient()
-        registry_name = f"etf-vol-{ticker}"
-        run_id = mlflow.active_run().info.run_id
-        model_uri = f"runs:/{run_id}/xgboost_model"
-        mv = mlflow.register_model(model_uri, registry_name)
-
-        promoted = False
+    with observe_duration(TRAINING_DURATION_SECONDS, ticker=ticker):
         try:
-            champion_mv = client.get_model_version_by_alias(registry_name, "champion")
-            champion_run = client.get_run(champion_mv.run_id)
-            champion_rmse = champion_run.data.metrics["rmse"]
-            if rmse < champion_rmse:
-                client.set_registered_model_alias(registry_name, "champion", mv.version)
-                logger.info(
-                    "New champion for %s: v%s (RMSE %.5f < %.5f)",
-                    ticker,
-                    mv.version,
-                    rmse,
-                    champion_rmse,
-                )
-                promoted = True
-            else:
-                logger.info(
-                    "Existing champion retained for %s (RMSE %.5f <= %.5f)",
-                    ticker,
-                    champion_rmse,
-                    rmse,
-                )
-        except Exception:
-            client.set_registered_model_alias(registry_name, "champion", mv.version)
-            logger.info(
-                "First model for %s promoted to champion (v%s)",
-                ticker,
-                mv.version,
-            )
-            promoted = True
+            ensure_bucket_exists(MLFLOW_ARTIFACT_BUCKET)
+            ensure_bucket_exists(DATA_LAKE_BUCKET)
+            logger.info("Starting training pipeline for %s", ticker)
 
-        return promoted
+            local_path = f"/tmp/{ticker}_features.parquet"
+            logger.info("Downloading %s features from %s", ticker, DATA_LAKE_BUCKET)
+            get_s3_client().download_file(
+                DATA_LAKE_BUCKET, f"{ticker}_features.parquet", local_path
+            )
+
+            df = pd.read_parquet(local_path)
+            features = ["log_return", "RSI_14", "MACD_12_26_9"]
+            df = df.dropna(subset=features + ["target_volatility_6h"])
+
+            X = df[features]
+            y = df["target_volatility_6h"]
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, shuffle=False
+            )
+
+            with mlflow.start_run(run_name=f"{ticker}_XGBoost_Baseline"):
+                logger.info("Training XGBoost model for %s", ticker)
+
+                params = {
+                    "n_estimators": 100,
+                    "learning_rate": 0.1,
+                    "max_depth": 5,
+                    "random_state": 42,
+                }
+                mlflow.log_params(params)
+                mlflow.log_param("ticker", ticker)
+
+                model = xgb.XGBRegressor(**params)
+                model.fit(X_train, y_train)
+
+                predictions = model.predict(X_test)
+                rmse = math.sqrt(mean_squared_error(y_test, predictions))
+                logger.info("Model RMSE for %s: %.5f", ticker, rmse)
+
+                mlflow.log_metric("rmse", rmse)
+                mlflow.xgboost.log_model(model, name="xgboost_model")
+
+                client = MlflowClient()
+                registry_name = f"etf-vol-{ticker}"
+                run_id = mlflow.active_run().info.run_id
+                model_uri = f"runs:/{run_id}/xgboost_model"
+                mv = mlflow.register_model(model_uri, registry_name)
+
+                promoted = False
+                try:
+                    champion_mv = client.get_model_version_by_alias(
+                        registry_name, "champion"
+                    )
+                    champion_run = client.get_run(champion_mv.run_id)
+                    champion_rmse = champion_run.data.metrics["rmse"]
+                    if rmse < champion_rmse:
+                        client.set_registered_model_alias(
+                            registry_name, "champion", mv.version
+                        )
+                        logger.info(
+                            "New champion for %s: v%s (RMSE %.5f < %.5f)",
+                            ticker,
+                            mv.version,
+                            rmse,
+                            champion_rmse,
+                        )
+                        promoted = True
+                    else:
+                        logger.info(
+                            "Existing champion retained for %s (RMSE %.5f <= %.5f)",
+                            ticker,
+                            champion_rmse,
+                            rmse,
+                        )
+                except Exception:
+                    client.set_registered_model_alias(
+                        registry_name, "champion", mv.version
+                    )
+                    logger.info(
+                        "First model for %s promoted to champion (v%s)",
+                        ticker,
+                        mv.version,
+                    )
+                    promoted = True
+
+                TRAINING_RMSE.labels(ticker=ticker).set(rmse)
+                TRAINING_RUNS_TOTAL.labels(ticker=ticker, status="success").inc()
+                if promoted:
+                    CHAMPION_PROMOTIONS_TOTAL.labels(ticker=ticker).inc()
+                return promoted
+        except Exception:
+            TRAINING_RUNS_TOTAL.labels(ticker=ticker, status="error").inc()
+            raise
 
 
 def run_training_pipeline() -> bool:
@@ -188,11 +212,14 @@ def run_training_pipeline() -> bool:
     tickers = get_active_tickers()
     logger.info("Training pipeline starting for tickers: %s", tickers)
     any_promoted = False
-    for ticker in tickers:
-        if train_model(ticker):
-            any_promoted = True
-    logger.info("Training pipeline completed (new_champion=%s)", any_promoted)
-    return any_promoted
+    try:
+        for ticker in tickers:
+            if train_model(ticker):
+                any_promoted = True
+        logger.info("Training pipeline completed (new_champion=%s)", any_promoted)
+        return any_promoted
+    finally:
+        push_metrics("etf-training", grouping_key=airflow_grouping_key())
 
 
 if __name__ == "__main__":

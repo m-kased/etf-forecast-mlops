@@ -6,9 +6,16 @@ import mlflow
 import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, field_validator
 
 from common.db import get_active_tickers
+from common.metrics import (
+    MODEL_RELOADS_TOTAL,
+    MODELS_LOADED,
+    PREDICTION_VOLATILITY,
+    PREDICTIONS_TOTAL,
+)
 
 load_dotenv()
 
@@ -62,12 +69,20 @@ def load_model_for_ticker(ticker: str) -> bool:
 async def lifespan(app: FastAPI):
     for ticker in get_active_tickers():
         load_model_for_ticker(ticker)
+    MODELS_LOADED.set(len(ml_models))
     yield
     ml_models.clear()
     model_versions.clear()
+    MODELS_LOADED.set(0)
 
 
 app = FastAPI(title="ETF Volatility Inference API", lifespan=lifespan)
+
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/metrics"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.get("/")
@@ -94,9 +109,12 @@ def reload_models(ticker: str | None = Query(default=None)):
         model_versions.pop(ticker, None)
         success = load_model_for_ticker(ticker)
         if not success:
+            MODEL_RELOADS_TOTAL.labels(scope=ticker, status="error").inc()
             raise HTTPException(
                 status_code=404, detail=f"No champion model found for {ticker}."
             )
+        MODEL_RELOADS_TOTAL.labels(scope=ticker, status="success").inc()
+        MODELS_LOADED.set(len(ml_models))
         return {"reloaded": [ticker], "version": model_versions.get(ticker)}
 
     ml_models.clear()
@@ -105,6 +123,8 @@ def reload_models(ticker: str | None = Query(default=None)):
     for t in get_active_tickers():
         if load_model_for_ticker(t):
             reloaded.append(t)
+    MODEL_RELOADS_TOTAL.labels(scope="all", status="success").inc()
+    MODELS_LOADED.set(len(ml_models))
     return {
         "reloaded": reloaded,
         "versions": {t: model_versions.get(t) for t in reloaded},
@@ -118,17 +138,27 @@ def predict(data: PredictionInput):
     if ticker not in ml_models:
         success = load_model_for_ticker(ticker)
         if not success:
+            PREDICTIONS_TOTAL.labels(ticker=ticker, status="model_missing").inc()
             raise HTTPException(
                 status_code=404,
                 detail=f"Model for {ticker} could not be loaded or does not exist.",
             )
+        MODELS_LOADED.set(len(ml_models))
 
     features = data.model_dump(exclude={"ticker"})
     input_df = pd.DataFrame([features])
 
-    prediction = ml_models[ticker].predict(input_df)
+    try:
+        prediction = ml_models[ticker].predict(input_df)
+        volatility = float(prediction[0])
+    except Exception:
+        PREDICTIONS_TOTAL.labels(ticker=ticker, status="error").inc()
+        raise
+
+    PREDICTIONS_TOTAL.labels(ticker=ticker, status="success").inc()
+    PREDICTION_VOLATILITY.labels(ticker=ticker).observe(volatility)
 
     return {
         "ticker": ticker,
-        "predicted_volatility": float(prediction[0]),
+        "predicted_volatility": volatility,
     }

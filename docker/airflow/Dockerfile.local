@@ -17,7 +17,7 @@ WORKDIR /opt/airflow
 COPY --chown=airflow:root pyproject.toml uv.lock ./
 
 RUN --mount=type=cache,id=uv-cache,target=${UV_CACHE_DIR},uid=50000 \
-    uv pip install --system -r pyproject.toml --extra airflow
+    uv pip install -r pyproject.toml --extra airflow
 
 COPY --chown=airflow:root src/ ./src/
 

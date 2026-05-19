@@ -4,7 +4,7 @@
 FROM apache/airflow:3.0.2-python3.12
 
 LABEL org.opencontainers.image.title="etf-forecast-airflow" \
-      org.opencontainers.image.description="Airflow 3 runtime with project dependencies and src (DAGs via git-sync)"
+    org.opencontainers.image.description="Airflow 3 runtime with project dependencies and src (DAGs via git-sync)"
 
 USER root
 
@@ -27,7 +27,7 @@ WORKDIR /opt/airflow
 
 COPY --chown=airflow:root pyproject.toml uv.lock ./
 
-RUN uv pip install --system -r pyproject.toml --extra airflow
+RUN uv pip install -r pyproject.toml --extra airflow
 
 COPY --chown=airflow:root src/ ./src/
 
