@@ -12,7 +12,7 @@ resource "helm_release" "kube_prometheus" {
 
   values = [file("${path.module}/values/kube-prometheus.yaml")]
 
-  depends_on = [helm_release.istiod, kubernetes_namespace.monitoring]
+  depends_on = [helm_release.istiod, terraform_data.namespace_monitoring]
 }
 
 # ---------------------------------------------------------------------------

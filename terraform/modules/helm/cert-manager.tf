@@ -17,5 +17,5 @@ resource "helm_release" "cert_manager" {
     value = "true"
   }
 
-  depends_on = [kubernetes_namespace.cert_manager]
+  depends_on = [terraform_data.namespace_cert_manager]
 }

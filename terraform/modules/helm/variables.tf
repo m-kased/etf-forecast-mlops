@@ -124,3 +124,30 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# --- Namespace dependencies (from kubernetes module) ---
+
+variable "namespace_istio_system" {
+  description = "UID of istio-system namespace"
+  type        = string
+}
+
+variable "namespace_cert_manager" {
+  description = "UID of cert-manager namespace"
+  type        = string
+}
+
+variable "namespace_monitoring" {
+  description = "UID of monitoring namespace"
+  type        = string
+}
+
+variable "namespace_airflow" {
+  description = "UID of airflow namespace"
+  type        = string
+}
+
+variable "namespace_mlflow" {
+  description = "UID of mlflow namespace"
+  type        = string
+}

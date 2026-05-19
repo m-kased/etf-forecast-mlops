@@ -105,3 +105,15 @@ variable "airflow_git_branch" {
   type        = string
   default     = "main"
 }
+
+variable "app_namespaces" {
+  description = "Namespaces for application workloads (API, UI, etc.) — core platform namespaces are fixed in the kubernetes module"
+  type = list(object({
+    name            = string
+    istio_injection = optional(bool, false)
+    labels          = optional(map(string), {})
+  }))
+  default = [
+    { name = "app", istio_injection = true },
+  ]
+}

@@ -41,8 +41,9 @@ terraform/
     ├── rds/            # RDS PostgreSQL
     ├── elasticache/    # ElastiCache Redis
     ├── s3/             # S3 buckets
-    ├── iam/            # IAM Configuration
-    └── helm/           # Helm chart releases + values for Core Kubernetes Components
+    ├── iam/            # IAM roles (EKS + IRSA)
+    ├── kubernetes/     # Namespaces and Kubernetes secrets
+    └── helm/           # Helm chart releases (platform components)
 ```
 
 ## Prerequisites
@@ -90,6 +91,31 @@ terraform init
 terraform plan
 terraform apply
 ```
+
+## Kubernetes namespaces
+
+**Core platform namespaces** (fixed resources in `modules/kubernetes/core-namespaces.tf`):
+
+| Resource | Namespace |
+|----------|-----------|
+| `kubernetes_namespace.istio_system` | `istio-system` |
+| `kubernetes_namespace.cert_manager` | `cert-manager` |
+| `kubernetes_namespace.monitoring` | `monitoring` |
+| `kubernetes_namespace.airflow` | `airflow` |
+| `kubernetes_namespace.mlflow` | `mlflow` |
+
+Each core namespace UID is passed to the helm module and used in `depends_on` so charts install only after their namespace exists.
+
+**App namespaces** — extend via `app_namespaces` per environment (`TF_VAR_app_namespaces`):
+
+```hcl
+app_namespaces = [
+  { name = "app", istio_injection = true },
+  # { name = "staging-app", istio_injection = true },
+]
+```
+
+Creates `kubernetes_namespace.app` (for_each) plus `app-rds-credentials` secret per namespace.
 
 ## Environment Differences
 

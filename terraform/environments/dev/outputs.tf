@@ -42,3 +42,8 @@ output "raw_data_bucket" {
   description = "S3 bucket for raw market data"
   value       = module.s3.raw_data_bucket_name
 }
+
+output "app_namespace_names" {
+  description = "App deployment namespace names"
+  value       = module.kubernetes.app_namespace_names
+}

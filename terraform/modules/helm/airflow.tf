@@ -34,5 +34,5 @@ resource "helm_release" "airflow" {
     value = var.rds_password
   }
 
-  depends_on = [helm_release.istiod, kubernetes_namespace.airflow, kubernetes_secret.airflow_rds]
+  depends_on = [helm_release.istiod, terraform_data.namespace_airflow]
 }

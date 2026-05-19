@@ -103,10 +103,33 @@ module "elasticache" {
 }
 
 # ──────────────────────────────────────────────
+#  Kubernetes (namespaces, secrets)
+# ──────────────────────────────────────────────
+module "kubernetes" {
+  source = "../../modules/kubernetes"
+
+  project_name   = var.project_name
+  environment    = var.environment
+  app_namespaces = var.app_namespaces
+  rds_endpoint   = module.rds.db_endpoint
+  rds_port       = module.rds.db_port
+  rds_username   = module.rds.db_username
+  rds_password   = module.rds.db_password
+  rds_db_name    = module.rds.db_name
+  tags           = local.tags
+}
+
+# ──────────────────────────────────────────────
 #  Helm Charts (platform services)
 # ──────────────────────────────────────────────
 module "helm" {
   source = "../../modules/helm"
+
+  namespace_istio_system = module.kubernetes.namespace_istio_system
+  namespace_cert_manager = module.kubernetes.namespace_cert_manager
+  namespace_monitoring   = module.kubernetes.namespace_monitoring
+  namespace_airflow      = module.kubernetes.namespace_airflow
+  namespace_mlflow       = module.kubernetes.namespace_mlflow
 
   project_name            = var.project_name
   environment             = var.environment
