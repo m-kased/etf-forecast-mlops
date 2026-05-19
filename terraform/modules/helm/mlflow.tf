@@ -26,5 +26,5 @@ resource "helm_release" "mlflow" {
     value = var.rds_password
   }
 
-  depends_on = [helm_release.istiod, kubernetes_namespace.namespace_mlflow]
+  depends_on = [helm_release.istiod, kubernetes_namespace.mlflow]
 }
