@@ -1,0 +1,76 @@
+executor: KubernetesExecutor
+
+images:
+  airflow:
+    repository: apache/airflow
+    tag: 3.0.2-python3.12
+
+webserver:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+workers:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+data:
+  metadataConnection:
+    user: "${rds_username}"
+    host: "${rds_endpoint}"
+    port: ${rds_port}
+    db: "${rds_db_name}"
+    protocol: postgresql
+
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+dags:
+  gitSync:
+    enabled: true
+    repo: "${git_repo}"
+    branch: "${git_branch}"
+    subPath: "dags"
+    wait: 60
+
+extraEnvFrom: |
+  - secretRef:
+      name: airflow-rds-credentials
+
+env:
+  - name: AIRFLOW__CORE__EXECUTOR
+    value: KubernetesExecutor
+  - name: MLFLOW_TRACKING_URI
+    value: "${mlflow_tracking_uri}"
+  - name: AWS_DEFAULT_REGION
+    value: "${region}"
+  - name: REDIS_HOST
+    value: "${redis_endpoint}"
+  - name: REDIS_PORT
+    value: "${redis_port}"
+
+serviceAccount:
+  create: true
+  name: airflow-worker
+  annotations:
+    eks.amazonaws.com/role-arn: "${airflow_role_arn}"
