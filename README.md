@@ -23,9 +23,11 @@ End-to-end platform for next-day volatility for ETFs like **SPY, QQQ, and IWM** 
 
 The platform is provisioned on AWS EKS via Terraform; the design center is the automated ML lifecycle—from extraction through inference and monitoring.
 
-<!-- Architecture diagram: uncomment when ready
-![Architecture](./assets/architecture.png)
--->
+<p align="center">
+  <img src="./assets/architecture.png" alt="ETF Forecast MLOps architecture" width="900"/>
+</p>
+
+### Phases of the pipeline
 
 | Phase | Component | What it does |
 |-------|-----------|--------------|
@@ -36,8 +38,8 @@ The platform is provisioned on AWS EKS via Terraform; the design center is the a
 | UI | `src/ui/app.py` | Streamlit dashboard for interactive inference |
 | Monitoring | Prometheus + Grafana | API scraped from `/metrics`; batch jobs push to Pushgateway |
 
-**Production orchestration:** Airflow on EKS with `KubernetesExecutor` and DAGs synced via git-sync.  
-**Local orchestration:** Airflow 3 `standalone` with `LocalExecutor` in Docker Compose.
+**Production:** Airflow on EKS with `KubernetesExecutor` and DAGs synced via git-sync.  
+**Local:** Airflow 3 `standalone` with `LocalExecutor` in Docker Compose.
 
 ## Technology stack
 
