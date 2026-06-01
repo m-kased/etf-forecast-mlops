@@ -1,0 +1,143 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "API Inference", "type": "link", "url": "/d/etf-api-inference" },
+    { "title": "ETL Pipeline", "type": "link", "url": "/d/etf-etl-pipeline" },
+    { "title": "ML Training", "type": "link", "url": "/d/etf-ml-training" }
+  ],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "options": { "content": "# ETF Forecast MLOps — platform health\nMetrics from FastAPI (`/metrics`), Airflow ETL/training via Pushgateway.", "mode": "markdown" },
+      "title": "",
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 2 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{namespace=\"app\",service=\"api\",status=~\"2..\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "API success RPS",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 2 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "sum(rate(etf_forecast_predictions_total{status=\"success\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Predictions / sec",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 2 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "sum(increase(etf_forecast_etl_runs_total{status=\"success\"}[24h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "ETL runs OK (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 2 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "sum(increase(etf_forecast_champion_promotions_total[7d]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Champion promotions (7d)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"app\",service=\"api\"}[5m])) by (le))",
+          "legendFormat": "API p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(etf_forecast_etl_duration_seconds_bucket[6h])) by (le))",
+          "legendFormat": "ETL p95",
+          "refId": "B"
+        }
+      ],
+      "title": "Latency overview",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "decimals": 5 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "etf_forecast_training_rmse",
+          "legendFormat": "{{ticker}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Model RMSE by ticker",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "up{job=\"pushgateway\"}",
+          "legendFormat": "pushgateway",
+          "refId": "A"
+        },
+        {
+          "expr": "count(up{namespace=\"app\",service=\"api\"} == 1)",
+          "legendFormat": "api pods",
+          "refId": "B"
+        }
+      ],
+      "title": "Scrape / workload health",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["etf-forecast", "overview"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "title": "ETF Forecast — Platform Overview",
+  "uid": "etf-platform-overview",
+  "version": 1
+}
