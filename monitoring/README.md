@@ -33,3 +33,5 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 Optional stack: Prometheus `9090`, Pushgateway `9091`, Grafana `3000`.
 
 Set `PROMETHEUS_PUSHGATEWAY_URL=http://pushgateway:9091` for Airflow services.
+
+Dashboards use compose labels (`job="api"`, `job="etf-etl"`, `job="etf-training"`). Batch stat panels use counter values, not `increase()`, because Pushgateway holds flat counters between pushes.
